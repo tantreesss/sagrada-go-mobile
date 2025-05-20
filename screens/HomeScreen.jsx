@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ImageBackground, TouchableOpacity, 
-  ScrollView, TextInput, Alert 
+  ScrollView, TextInput, Alert, Linking 
 } from 'react-native';
 import { globalStyles } from '../styles/globalStyles';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ChatBot from '../components/ChatBot';
 
 const upcomingEvents = [
   { id: '1', title: 'Sunday Mass', date: '2025-02-23' },
@@ -191,6 +192,7 @@ export default function HomeScreen({ navigation }) {
 </View>
 
       </ScrollView>
+      <ChatBot />
     </ImageBackground>
   );
 }

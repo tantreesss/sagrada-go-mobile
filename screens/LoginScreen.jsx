@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, ActivityIndicator } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { supabase, handleSupabaseError } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { globalStyles } from '../styles/globalStyles';
 
 export default function LoginScreen({ navigation }) {
@@ -24,16 +24,17 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // 1. Sign in with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (authError) throw authError;
 
-      if (data?.user) {
-        // Check if email is verified
-        if (!data.user.email_confirmed_at) {
+      if (authData?.user) {
+        // 2. Check if email is verified
+        if (!authData.user.email_confirmed_at) {
           Alert.alert(
             'Email Not Verified',
             'Please verify your email before logging in.',
@@ -50,21 +51,34 @@ export default function LoginScreen({ navigation }) {
           return;
         }
 
-        // Get user profile data
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
+        // 3. Get user profile data from user_tbl
+        const { data: userData, error: userError } = await supabase
+          .from('user_tbl')
           .select('*')
-          .eq('id', data.user.id)
+          .eq('id', authData.user.id)
           .single();
 
-        if (profileError) throw profileError;
+        if (userError) throw userError;
+
+        // 4. Check if user is an employee
+        const { data: employeeData, error: employeeError } = await supabase
+          .from('employee_tbl')
+          .select('id, user_role')
+          .eq('user_email', email)
+          .single();
+
+        if (employeeData) {
+          // Store employee role in context or state management
+          // You might want to add this to your AuthContext
+          console.log('Employee role:', employeeData.user_role);
+        }
 
         setIsAuthenticated(true);
         navigation.navigate('Home');
       }
     } catch (error) {
-      const errorMessage = handleSupabaseError(error);
-      Alert.alert('Error', errorMessage);
+      console.error('Login error:', error);
+      Alert.alert('Error', error.message || 'Failed to log in. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -100,9 +114,11 @@ export default function LoginScreen({ navigation }) {
         onPress={handleLogin}
         disabled={loading}
       >
-        <Text style={globalStyles.buttonText}>
-          {loading ? 'Logging in...' : 'Login'}
-        </Text>
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={globalStyles.buttonText}>Login</Text>
+        )}
       </TouchableOpacity>
       
       <TouchableOpacity 

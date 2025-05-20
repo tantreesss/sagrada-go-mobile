@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
-  ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
+  ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard,
+  ActivityIndicator
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { globalStyles } from '../styles/globalStyles';
-import { supabase, handleSupabaseError } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
 export default function SignupScreen({ navigation }) {
   const { setIsAuthenticated } = useAuth();
   const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [gender, setGender] = useState('');
+  const [status, setStatus] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [birthday, setBirthday] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -22,7 +26,7 @@ export default function SignupScreen({ navigation }) {
 
   const validateInputs = () => {
     if (!firstName || !lastName || !contactNumber || !birthday || !email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields.');
+      Alert.alert('Error', 'Please fill in all required fields.');
       return false;
     }
 
@@ -74,17 +78,21 @@ export default function SignupScreen({ navigation }) {
       if (authError) throw authError;
 
       if (authData?.user) {
-        // 2. Store additional user data in the profiles table
+        // 2. Store additional user data in the user_tbl
         const { error: profileError } = await supabase
-          .from('profiles')
+          .from('user_tbl')
           .insert([
             {
               id: authData.user.id,
-              first_name: firstName,
-              last_name: lastName,
-              contact_number: contactNumber,
-              birthday: birthday.toISOString().split('T')[0],
-              email: email,
+              user_firstname: firstName,
+              user_middle: middleName,
+              user_lastname: lastName,
+              user_gender: gender || 'rather not to tell',
+              user_status: status || 'single',
+              user_mobile: contactNumber,
+              user_bday: birthday.toISOString().split('T')[0],
+              user_email: email,
+              user_pword: password,
             },
           ]);
 
@@ -107,8 +115,8 @@ export default function SignupScreen({ navigation }) {
         );
       }
     } catch (error) {
-      const errorMessage = handleSupabaseError(error);
-      Alert.alert('Error', errorMessage);
+      console.error('Error during signup:', error);
+      Alert.alert('Error', error.message || 'Failed to create account. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -123,29 +131,76 @@ export default function SignupScreen({ navigation }) {
 
             <TextInput
               style={styles.input}
-              placeholder="First Name"
+              placeholder="First Name *"
               value={firstName}
               onChangeText={setFirstName}
+              editable={!loading}
             />
             <TextInput
               style={styles.input}
-              placeholder="Last Name"
+              placeholder="Middle Name"
+              value={middleName}
+              onChangeText={setMiddleName}
+              editable={!loading}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Last Name *"
               value={lastName}
               onChangeText={setLastName}
+              editable={!loading}
             />
+
+            <Text style={styles.label}>Gender:</Text>
+            <View style={styles.radioGroup}>
+              {['m', 'f', 'rather not to tell'].map((g) => (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.radioOption, gender === g && styles.radioSelected]}
+                  onPress={() => setGender(g)}
+                  disabled={loading}
+                >
+                  <Text style={[styles.radioText, gender === g && styles.radioTextSelected]}>
+                    {g === 'm' ? 'Male' : g === 'f' ? 'Female' : 'Rather not to tell'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Status:</Text>
+            <View style={styles.radioGroup}>
+              {['single', 'married', 'widow'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.radioOption, status === s && styles.radioSelected]}
+                  onPress={() => setStatus(s)}
+                  disabled={loading}
+                >
+                  <Text style={[styles.radioText, status === s && styles.radioTextSelected]}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TextInput
               style={styles.input}
-              placeholder="Contact Number"
+              placeholder="Contact Number *"
               value={contactNumber}
               onChangeText={(text) => {
                 if (/^\d*$/.test(text)) setContactNumber(text);
               }}
               keyboardType="phone-pad"
+              editable={!loading}
             />
 
-            <TouchableOpacity style={styles.input} onPress={() => setShowDatePicker(true)}>
+            <TouchableOpacity 
+              style={styles.input} 
+              onPress={() => setShowDatePicker(true)}
+              disabled={loading}
+            >
               <Text style={birthday ? styles.birthdayText : styles.placeholderText}>
-                {birthday ? birthday.toISOString().split('T')[0] : 'Select Birthday'}
+                {birthday ? birthday.toISOString().split('T')[0] : 'Select Birthday *'}
               </Text>
             </TouchableOpacity>
             {showDatePicker && (
@@ -162,31 +217,43 @@ export default function SignupScreen({ navigation }) {
 
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Email *"
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!loading}
             />
             <TextInput
               style={styles.input}
-              placeholder="Password"
+              placeholder="Password *"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
+              editable={!loading}
             />
             <TextInput
               style={styles.input}
-              placeholder="Confirm Password"
+              placeholder="Confirm Password *"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
+              editable={!loading}
             />
 
-            <TouchableOpacity style={globalStyles.button} onPress={handleSignup}>
-              <Text style={globalStyles.buttonText}>Sign Up</Text>
+            <TouchableOpacity 
+              style={[globalStyles.button, loading && styles.buttonDisabled]} 
+              onPress={handleSignup}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={globalStyles.buttonText}>Sign Up</Text>
+              )}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={loading}>
               <Text style={styles.link}>Already have an account? Log in</Text>
             </TouchableOpacity>
           </View>
@@ -224,5 +291,37 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: 'center',
     fontWeight: 'bold',
+  },
+  buttonDisabled: {
+    opacity: 0.7,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  radioGroup: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 15,
+  },
+  radioOption: {
+    flex: 1,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    marginHorizontal: 5,
+    alignItems: 'center',
+  },
+  radioSelected: {
+    backgroundColor: '#007bff',
+    borderColor: '#007bff',
+  },
+  radioText: {
+    color: '#333',
+  },
+  radioTextSelected: {
+    color: '#fff',
   },
 });

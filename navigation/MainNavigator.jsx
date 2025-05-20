@@ -6,6 +6,7 @@ import EventsScreen from '../screens/EventsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import BookingScreen from '../screens/BookingScreen';
 import BookingListScreen from '../screens/BookingListScreen'; 
+import RequestScreen from '../screens/RequestScreen';
 import VirtualTourScreen from '../screens/VirtualTourScreen';
 import Ionicons from 'react-native-vector-icons/Ionicons'; 
 
@@ -34,8 +35,21 @@ function BookingStackNavigator() {
         headerTintColor: '#fff',
       }}
     >
-      <BookingStack.Screen name="Booking" component={BookingScreen} />
-      <BookingStack.Screen name="BookingList" component={BookingListScreen} />
+      <BookingStack.Screen 
+        name="Booking" 
+        component={BookingScreen}
+        options={{ title: 'Book a Sacrament' }}
+      />
+      <BookingStack.Screen 
+        name="BookingList" 
+        component={BookingListScreen}
+        options={{ title: 'Your Bookings' }}
+      />
+      <BookingStack.Screen 
+        name="Request" 
+        component={RequestScreen}
+        options={{ title: 'Request Certificates' }}
+      />
     </BookingStack.Navigator>
   );
 }
@@ -69,7 +83,11 @@ export default function MainNavigator() {
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Events" component={EventsScreen} />
-      <Tab.Screen name="Bookings" component={BookingStackNavigator} /> 
+      <Tab.Screen 
+        name="Bookings" 
+        component={BookingStackNavigator}
+        options={{ title: 'Bookings & Requests' }}
+      /> 
       <Tab.Screen name="Virtual Tour" component={VirtualTourScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>

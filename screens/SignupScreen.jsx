@@ -4,10 +4,12 @@ import {
   ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { globalStyles } from '../styles/globalStyles';
+import { supabase, handleSupabaseError } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export default function SignupScreen({ navigation }) {
+  const { setIsAuthenticated } = useAuth();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [contactNumber, setContactNumber] = useState('');
@@ -16,6 +18,7 @@ export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const validateInputs = () => {
     if (!firstName || !lastName || !contactNumber || !birthday || !email || !password || !confirmPassword) {
@@ -51,7 +54,6 @@ export default function SignupScreen({ navigation }) {
 
     if (age < 18 || (age === 18 && monthDiff < 0) || (age === 18 && monthDiff === 0 && dayDiff < 0)) {
       Alert.alert('Error', 'You must be at least 18 years old to register.');
-      navigation.navigate('Login'); 
       return false;
     }
 
@@ -60,23 +62,55 @@ export default function SignupScreen({ navigation }) {
 
   const handleSignup = async () => {
     if (!validateInputs()) return;
-
-    const formattedBirthday = birthday.toISOString().split('T')[0];
-    const user = { firstName, lastName, contactNumber, birthday: formattedBirthday, email, password };
+    setLoading(true);
 
     try {
-      const existingUser = await AsyncStorage.getItem(email);
-      if (existingUser) {
-        Alert.alert('Error', 'Email is already registered.');
-        return;
-      }
+      // 1. Sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+      });
 
-      await AsyncStorage.setItem(email, JSON.stringify(user));
-      Alert.alert('Success', 'Account created successfully!');
-      navigation.navigate('Login');
+      if (authError) throw authError;
+
+      if (authData?.user) {
+        // 2. Store additional user data in the profiles table
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            {
+              id: authData.user.id,
+              first_name: firstName,
+              last_name: lastName,
+              contact_number: contactNumber,
+              birthday: birthday.toISOString().split('T')[0],
+              email: email,
+            },
+          ]);
+
+        if (profileError) throw profileError;
+
+        Alert.alert(
+          'Success', 
+          'Account created successfully! Please check your email for verification.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Sign out the user since they need to verify their email
+                supabase.auth.signOut();
+                setIsAuthenticated(false);
+                navigation.navigate('Login');
+              }
+            }
+          ]
+        );
+      }
     } catch (error) {
-      console.error('Error saving user data:', error);
-      Alert.alert('Error', 'Failed to create account.');
+      const errorMessage = handleSupabaseError(error);
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 

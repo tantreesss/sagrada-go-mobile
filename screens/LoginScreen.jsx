@@ -1,39 +1,77 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase, handleSupabaseError } from '../lib/supabase';
 import { globalStyles } from '../styles/globalStyles';
 
 export default function LoginScreen({ navigation }) {
   const { setIsAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields.');
+      return;
+    }
+
+    if (!email.includes('@')) {
+      Alert.alert('Error', 'Please enter a valid email address.');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      const userData = await AsyncStorage.getItem(email);
-      if (!userData) {
-        Alert.alert('Error', 'User not found.');
-        return;
-      }
-  
-      const user = JSON.parse(userData);
-  
-      if (user.password === password) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data?.user) {
+        // Check if email is verified
+        if (!data.user.email_confirmed_at) {
+          Alert.alert(
+            'Email Not Verified',
+            'Please verify your email before logging in.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await supabase.auth.signOut();
+                  setIsAuthenticated(false);
+                }
+              }
+            ]
+          );
+          return;
+        }
+
+        // Get user profile data
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError) throw profileError;
+
         setIsAuthenticated(true);
-        await AsyncStorage.setItem('currentUser', JSON.stringify(user));
         navigation.navigate('Home');
-      } else {
-        Alert.alert('Error', 'Incorrect password.');
       }
     } catch (error) {
-      console.error('Error logging in:', error);
+      const errorMessage = handleSupabaseError(error);
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setLoading(false);
     }
-  };  
+  };
 
   return (
     <View style={globalStyles.container}>
-
       <Image source={require('../assets/sagrada.png')} style={styles.logo} />
 
       <Text style={globalStyles.title}>Login</Text>
@@ -43,7 +81,9 @@ export default function LoginScreen({ navigation }) {
         placeholder="Email" 
         value={email} 
         onChangeText={setEmail} 
-        keyboardType="email-address" 
+        keyboardType="email-address"
+        autoCapitalize="none"
+        editable={!loading}
       />
       
       <TextInput 
@@ -51,14 +91,24 @@ export default function LoginScreen({ navigation }) {
         placeholder="Password" 
         value={password} 
         onChangeText={setPassword} 
-        secureTextEntry 
+        secureTextEntry
+        editable={!loading}
       />
       
-      <TouchableOpacity style={globalStyles.button} onPress={handleLogin}>
-        <Text style={globalStyles.buttonText}>Login</Text>
+      <TouchableOpacity 
+        style={[globalStyles.button, loading && styles.buttonDisabled]} 
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        <Text style={globalStyles.buttonText}>
+          {loading ? 'Logging in...' : 'Login'}
+        </Text>
       </TouchableOpacity>
       
-      <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
+      <TouchableOpacity 
+        onPress={() => navigation.navigate('Signup')}
+        disabled={loading}
+      >
         <Text style={styles.link}>Don't have an account? Sign up</Text>
       </TouchableOpacity>
     </View>
@@ -73,7 +123,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,  
     alignSelf: 'center', 
   },
-  
   input: { 
     height: 50, 
     borderColor: '#ccc', 
@@ -88,4 +137,7 @@ const styles = StyleSheet.create({
     textAlign: 'center', 
     fontWeight: 'bold' 
   },
+  buttonDisabled: {
+    opacity: 0.7
+  }
 });

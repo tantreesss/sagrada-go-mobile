@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Platform, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Platform, FlatList, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../context/AuthContext';
@@ -10,17 +10,14 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 export default function BookingScreen() {
   const { user } = useAuth();
   const [selectedSacrament, setSelectedSacrament] = useState('');
-  const [selectedPriest, setSelectedPriest] = useState(null);
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(new Date());
   const [pax, setPax] = useState('1');
   const [errorMessage, setErrorMessage] = useState('');
   const [showSacramentModal, setShowSacramentModal] = useState(false);
-  const [showPriestModal, setShowPriestModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [bookings, setBookings] = useState([]);
-  const [priests, setPriests] = useState([]);
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
 
@@ -32,23 +29,8 @@ export default function BookingScreen() {
   ];
 
   useEffect(() => {
-    fetchPriests();
     fetchBookings();
   }, []);
-
-  const fetchPriests = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('priest_tbl')
-        .select('*');
-
-      if (error) throw error;
-      setPriests(data || []);
-    } catch (error) {
-      console.error('Error fetching priests:', error);
-      Alert.alert('Error', 'Failed to fetch priests.');
-    }
-  };
 
   const fetchBookings = async () => {
     try {
@@ -72,11 +54,6 @@ export default function BookingScreen() {
       return;
     }
 
-    if (!selectedPriest) {
-      setErrorMessage('Please select a priest.');
-      return;
-    }
-
     if (!date || !time) {
       setErrorMessage('Please select both date and time.');
       return;
@@ -94,13 +71,12 @@ export default function BookingScreen() {
         .insert([
           {
             user_id: user.id,
-            priest_id: selectedPriest.id,
             booking_sacrament: selectedSacrament,
-            booking_priest: `${selectedPriest.priest_firstname} ${selectedPriest.priest_lastname}`,
             booking_date: date.toISOString().split('T')[0],
             booking_time: time.toTimeString().split(' ')[0],
             booking_pax: parseInt(pax),
-            booking_transaction: `TRX-${Date.now()}`
+            booking_transaction: `TRX-${Date.now()}`,
+            booking_status: 'pending'
           }
         ]);
 
@@ -114,7 +90,6 @@ export default function BookingScreen() {
             text: 'OK',
             onPress: () => {
               setSelectedSacrament('');
-              setSelectedPriest(null);
               setDate(new Date());
               setTime(new Date());
               setPax('1');
@@ -152,12 +127,11 @@ export default function BookingScreen() {
         <Text style={styles.bookingSacrament}>{item.booking_sacrament}</Text>
         <Text style={[
           styles.bookingStatus,
-          { color: item.date_updated === item.date_created ? '#FFA500' : '#4CAF50' }
+          { color: item.booking_status === 'pending' ? '#FFA500' : '#4CAF50' }
         ]}>
-          {item.date_updated === item.date_created ? 'Pending' : 'Confirmed'}
+          {item.booking_status === 'pending' ? 'Pending' : 'Confirmed'}
         </Text>
       </View>
-      <Text style={styles.bookingPriest}>Priest: {item.booking_priest}</Text>
       <Text style={styles.bookingDateTime}>
         {new Date(item.booking_date).toLocaleDateString()} at {new Date(`2000-01-01T${item.booking_time}`).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </Text>
@@ -177,16 +151,6 @@ export default function BookingScreen() {
         >
           <Text style={styles.selectorText}>
             {selectedSacrament || 'Select Sacrament'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* Priest Selection */}
-        <TouchableOpacity 
-          style={styles.selector}
-          onPress={() => setShowPriestModal(true)}
-        >
-          <Text style={styles.selectorText}>
-            {selectedPriest ? `${selectedPriest.priest_firstname} ${selectedPriest.priest_lastname}` : 'Select Priest'}
           </Text>
         </TouchableOpacity>
 
@@ -221,46 +185,13 @@ export default function BookingScreen() {
           </View>
         </Modal>
 
-        {/* Priest Selection Modal */}
-        <Modal
-          visible={showPriestModal}
-          transparent={true}
-          animationType="slide"
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Select a Priest</Text>
-              {priests.map((priest) => (
-                <TouchableOpacity
-                  key={priest.id}
-                  style={styles.modalOption}
-                  onPress={() => {
-                    setSelectedPriest(priest);
-                    setShowPriestModal(false);
-                  }}
-                >
-                  <Text style={styles.modalOptionText}>
-                    {priest.priest_firstname} {priest.priest_lastname}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setShowPriestModal(false)}
-              >
-                <Text style={styles.modalCloseButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-
         {/* Error Message */}
         {errorMessage ? (
           <Text style={styles.errorText}>{errorMessage}</Text>
         ) : null}
 
         {/* Date and Time Selection */}
-        {selectedSacrament && selectedPriest ? (
+        {selectedSacrament ? (
           <View style={styles.selectionContainer}>
             <Text style={styles.subtitle}>
               Selected Sacrament: {selectedSacrament}
@@ -289,34 +220,42 @@ export default function BookingScreen() {
             </TouchableOpacity>
 
             {/* Number of Attendees */}
-            <TouchableOpacity 
-              style={styles.dateTimeSelector}
-              onPress={() => {
-                Alert.prompt(
-                  'Number of Attendees',
-                  'Enter the number of attendees:',
-                  [
-                    {
-                      text: 'Cancel',
-                      style: 'cancel',
-                    },
-                    {
-                      text: 'OK',
-                      onPress: (value) => {
-                        if (value && !isNaN(value) && parseInt(value) > 0) {
-                          setPax(value);
-                        }
-                      },
-                    },
-                  ],
-                  'plain-text',
-                  pax
-                );
-              }}
-            >
+            <View style={styles.dateTimeSelector}>
               <Text style={styles.label}>Number of Attendees:</Text>
-              <Text style={styles.dateTimeText}>{pax}</Text>
-            </TouchableOpacity>
+              <View style={styles.paxContainer}>
+                <TouchableOpacity 
+                  style={styles.paxButton}
+                  onPress={() => {
+                    const newPax = Math.max(1, parseInt(pax) - 1);
+                    setPax(newPax.toString());
+                  }}
+                >
+                  <Text style={styles.paxButtonText}>-</Text>
+                </TouchableOpacity>
+                <TextInput
+                  style={styles.paxInput}
+                  value={pax}
+                  onChangeText={(text) => {
+                    // Only allow numbers
+                    const numericValue = text.replace(/[^0-9]/g, '');
+                    if (numericValue === '' || parseInt(numericValue) > 0) {
+                      setPax(numericValue);
+                    }
+                  }}
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <TouchableOpacity 
+                  style={styles.paxButton}
+                  onPress={() => {
+                    const newPax = parseInt(pax) + 1;
+                    setPax(newPax.toString());
+                  }}
+                >
+                  <Text style={styles.paxButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             {/* Date Picker */}
             {showDatePicker && (
@@ -509,11 +448,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  bookingPriest: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
   bookingDateTime: {
     fontSize: 14,
     color: '#666',
@@ -528,5 +462,34 @@ const styles = StyleSheet.create({
     color: '#666',
     fontStyle: 'italic',
     marginTop: 10,
+  },
+  paxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 5,
+  },
+  paxButton: {
+    backgroundColor: '#007AFF',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paxButtonText: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  paxInput: {
+    fontSize: 18,
+    marginHorizontal: 20,
+    minWidth: 30,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    padding: 5,
   },
 });

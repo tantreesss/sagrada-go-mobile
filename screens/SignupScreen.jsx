@@ -92,7 +92,6 @@ export default function SignupScreen({ navigation }) {
               user_mobile: contactNumber,
               user_bday: birthday.toISOString().split('T')[0],
               user_email: email,
-              user_pword: password,
             },
           ]);
 

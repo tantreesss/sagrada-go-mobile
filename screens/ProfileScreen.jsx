@@ -29,6 +29,7 @@ export default function ProfileScreen({ navigation }) {
   const fetchUserData = async () => {
     try {
       setLoading(true);
+      // Fetch user profile from user_tbl in Supabase
       const { data, error } = await supabase
         .from('user_tbl')
         .select('*')
@@ -88,7 +89,7 @@ export default function ProfileScreen({ navigation }) {
         if (authError) throw authError;
       }
 
-      // Update user profile
+      // Update user profile in user_tbl (do not update password here)
       const { error: profileError } = await supabase
         .from('user_tbl')
         .update({
@@ -99,8 +100,7 @@ export default function ProfileScreen({ navigation }) {
           user_status: newData.user_status,
           user_mobile: newData.user_mobile,
           user_bday: newData.user_bday,
-          user_email: newData.user_email,
-          user_pword: newPassword || userData.user_pword
+          user_email: newData.user_email
         })
         .eq('id', user.id);
 

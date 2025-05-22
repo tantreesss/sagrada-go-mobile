@@ -4,7 +4,11 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 export default function EventCard({ event }) {
   return (
     <View style={styles.card}>
-      <Image source={{ uri: event.image }} style={styles.image} resizeMode="cover" />
+      <Image 
+        source={typeof event.image === 'string' ? { uri: event.image } : event.image} 
+        style={styles.image} 
+        resizeMode="cover" 
+      />
       <Text style={styles.title}>{event.title}</Text>
       <Text style={styles.date}>{event.date}</Text>
     </View>

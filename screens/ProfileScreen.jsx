@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Alert, StyleSheet,
-  ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, ActivityIndicator
+  ScrollView, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, ActivityIndicator,
+  Image
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function ProfileScreen({ navigation }) {
   const { user, setIsAuthenticated } = useAuth();
@@ -19,6 +23,7 @@ export default function ProfileScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -41,21 +46,87 @@ export default function ProfileScreen({ navigation }) {
       if (data) {
         setUserData(data);
         setNewData(data);
+        // Fetch profile image if exists
+        if (data.profile_image_url) {
+          setProfileImage(data.profile_image_url);
+        }
       }
 
-      // Fetch volunteer status
-      const { data: volunteerData, error: volunteerError } = await supabase
-        .from('employee_tbl')
-        .select('id')
-        .eq('user_email', data.user_email)
-        .single();
-
-      if (volunteerData) {
-        setVolunteerID(volunteerData.id);
+      // Check volunteer status from AsyncStorage
+      const volunteerID = await AsyncStorage.getItem('volunteerID');
+      if (volunteerID) {
+        setVolunteerID(volunteerID);
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
       Alert.alert('Error', 'Failed to fetch user data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant permission to access your photos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled) {
+        await uploadImage(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const uploadImage = async (uri) => {
+    try {
+      setLoading(true);
+      
+      // Convert image to blob
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      
+      // Generate unique filename
+      const filename = `${user.id}-${Date.now()}.jpg`;
+      const filePath = `profile-images/${filename}`;
+
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('profiles')
+        .upload(filePath, blob);
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profiles')
+        .getPublicUrl(filePath);
+
+      // Update user profile with new image URL
+      const { error: updateError } = await supabase
+        .from('user_tbl')
+        .update({ profile_image_url: publicUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setProfileImage(publicUrl);
+      Alert.alert('Success', 'Profile image updated successfully');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload image');
     } finally {
       setLoading(false);
     }
@@ -158,6 +229,16 @@ export default function ProfileScreen({ navigation }) {
               <ActivityIndicator size="large" color="#007bff" />
             ) : userData ? (
               <>
+                <TouchableOpacity onPress={pickImage} style={styles.profileImageContainer}>
+                  {profileImage ? (
+                    <Image source={{ uri: profileImage }} style={styles.profileImage} />
+                  ) : (
+                    <View style={styles.profileImagePlaceholder}>
+                      <Text style={styles.profileImagePlaceholderText}>Add Photo</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+
                 <Text style={styles.label}>First Name:</Text>
                 <TextInput
                   style={styles.input}
@@ -280,10 +361,14 @@ export default function ProfileScreen({ navigation }) {
                 )}
 
                 {volunteerID && (
-                  <>
-                    <Text style={styles.label}>Volunteer ID:</Text>
-                    <Text style={styles.volunteerID}>{volunteerID}</Text>
-                  </>
+                  <View style={styles.volunteerStatusContainer}>
+                    <Text style={styles.volunteerStatusLabel}>Volunteer Status:</Text>
+                    <View style={styles.volunteerStatus}>
+                      <Ionicons name="checkmark-circle" size={24} color="#28a745" />
+                      <Text style={styles.volunteerStatusText}>Active Volunteer</Text>
+                    </View>
+                    <Text style={styles.volunteerID}>ID: {volunteerID}</Text>
+                  </View>
                 )}
 
                 {editing && (
@@ -390,5 +475,60 @@ const styles = StyleSheet.create({
   },
   radioTextSelected: {
     color: '#fff'
-  }
+  },
+  profileImageContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    marginBottom: 20,
+    overflow: 'hidden',
+    backgroundColor: '#f0f0f0',
+  },
+  profileImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  profileImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#e0e0e0',
+  },
+  profileImagePlaceholderText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  volunteerStatusContainer: {
+    width: '100%',
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 8,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  volunteerStatusLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#495057',
+    marginBottom: 8,
+  },
+  volunteerStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  volunteerStatusText: {
+    fontSize: 16,
+    color: '#28a745',
+    marginLeft: 8,
+    fontWeight: 'bold',
+  },
+  volunteerID: {
+    fontSize: 14,
+    color: '#6c757d',
+    fontStyle: 'italic',
+  },
 });

@@ -19,10 +19,23 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.tantreesss.sagradago"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "404eff2e-5c44-460f-9cd8-136986b610bc"
+      }
+    },
+    "owner": "tantreesss",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/404eff2e-5c44-460f-9cd8-136986b610bc"
     }
   }
 }

@@ -9,6 +9,7 @@ import BookingListScreen from '../screens/BookingListScreen';
 import RequestScreen from '../screens/RequestScreen';
 import VirtualTourScreen from '../screens/VirtualTourScreen';
 import Ionicons from 'react-native-vector-icons/Ionicons'; 
+import CertificateRequestScreen from '../screens/CertificateRequestScreen';
 
 const Tab = createBottomTabNavigator();
 const BookingStack = createStackNavigator();
@@ -68,9 +69,11 @@ export default function MainNavigator() {
           } else if (route.name === 'Bookings') {
             iconName = focused ? 'book' : 'book-outline';
           } else if (route.name === 'Virtual Tour') {
-            iconName = focused ? 'map' : 'map-outline';
+            iconName = focused ? 'document' : 'document-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
+          } else if (route.name === 'Request') {
+            iconName = focused ? 'document-text' : 'document-text-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -88,7 +91,7 @@ export default function MainNavigator() {
         component={BookingStackNavigator}
         options={{ title: 'Bookings & Requests' }}
       /> 
-      <Tab.Screen name="Virtual Tour" component={VirtualTourScreen} />
+      <Tab.Screen name="Request" component={CertificateRequestScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

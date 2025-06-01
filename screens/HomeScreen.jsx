@@ -7,6 +7,7 @@ import { globalStyles } from '../styles/globalStyles';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ChatBot from '../components/ChatBot';
+import { supabase } from '../lib/supabase';
 
 const upcomingEvents = [
   { id: '1', title: 'Sunday Mass', date: '2025-02-23' },
@@ -20,24 +21,38 @@ export default function HomeScreen({ navigation }) {
   const [donationAmount, setDonationAmount] = useState('');
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchUserProfile = async () => {
       try {
-        const storedUser = await AsyncStorage.getItem('currentUser');
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          setUsername(user.firstName); 
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+
+          const { data: userData, error } = await supabase
+            .from('user_tbl')
+            .select('user_firstname')
+            .eq('id', user.id)
+            .single();
+
+          if (error) {
+            console.error('Error fetching user_tbl:', error);
+            return;
+          }
+
+          if (userData && userData.user_firstname) {
+            setUsername(userData.user_firstname);
+          }
         }
       } catch (error) {
-        console.error('Error fetching user data:', error);
+        console.error('Error in fetchUserProfile:', error);
       }
     };
-  
-    fetchUser();
-  
+
+    fetchUserProfile();
+
     if (upcomingEvents.length > 0) {
       setNextEvent(upcomingEvents[0]);
     }
-  }, []);  
+  }, []);
 
   const handleDonate = () => {
     if (!donationAmount || isNaN(donationAmount) || Number(donationAmount) <= 0) {

@@ -1,7 +1,7 @@
 // navigation/AuthNavigator.js
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useAuth } from '../context/AuthContext'; // ✅ Import Auth Context
+import { useAuth } from '../context/AuthContext';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import MainNavigator from './MainNavigator';
@@ -9,9 +9,9 @@ import MainNavigator from './MainNavigator';
 const Stack = createStackNavigator();
 
 export default function AuthNavigator() {
-  const { isAuthenticated } = useAuth(); // ✅ Get authentication state
+  const { isAuthenticated, loading } = useAuth();
 
-  if (isAuthenticated === undefined) return null; // ✅ Prevent rendering errors
+  if (loading) return null; // Show loading screen while checking auth state
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>

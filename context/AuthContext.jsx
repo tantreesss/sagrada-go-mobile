@@ -11,8 +11,6 @@ export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminData, setAdminData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Initialize authentication state
@@ -72,10 +70,6 @@ export function AuthProvider({ children }) {
         setUserProfile(profile);
       }
 
-      // Check if user is admin
-      const isUserAdmin = profile?.is_admin || false;
-      setIsAdmin(isUserAdmin);
-
       // Store auth data in AsyncStorage
       await AsyncStorage.setItem('userToken', user.access_token);
       await AsyncStorage.setItem('userData', JSON.stringify(profile || {}));
@@ -94,14 +88,11 @@ export function AuthProvider({ children }) {
       await AsyncStorage.removeItem('userToken');
       await AsyncStorage.removeItem('userData');
       await AsyncStorage.removeItem('isAuthenticated');
-      await AsyncStorage.removeItem('adminData');
 
       // Clear state
       setUser(null);
       setUserProfile(null);
       setIsAuthenticated(false);
-      setIsAdmin(false);
-      setAdminData(null);
     } catch (error) {
       console.error('Error during sign out:', error);
     }
@@ -197,8 +188,6 @@ export function AuthProvider({ children }) {
             user_mobile: userData.user_mobile,
             user_bday: userData.user_bday.toISOString().split('T')[0],
             user_email: userData.user_email,
-            is_admin: false,
-            is_volunteer: false,
           }]);
 
         if (profileError) throw profileError;
@@ -275,59 +264,11 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Admin authentication methods
-  const adminLogin = async (email, password) => {
-    try {
-      // Check if user exists and is admin
-      const { data: userData, error: userError } = await supabase
-        .from('user_tbl')
-        .select('*')
-        .eq('user_email', email)
-        .eq('is_admin', true)
-        .single();
-
-      if (userError || !userData) {
-        throw new Error('Invalid admin credentials.');
-      }
-
-      // Sign in with Supabase Auth
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      if (data?.user) {
-        setAdminData(userData);
-        setIsAdmin(true);
-        await AsyncStorage.setItem('adminData', JSON.stringify(userData));
-        return { success: true, adminData: userData };
-      }
-    } catch (error) {
-      console.error('Admin login error:', error);
-      throw error;
-    }
-  };
-
-  const adminLogout = async () => {
-    try {
-      setAdminData(null);
-      setIsAdmin(false);
-      await AsyncStorage.removeItem('adminData');
-    } catch (error) {
-      console.error('Admin logout error:', error);
-      throw error;
-    }
-  };
-
   const value = {
     // State
     isAuthenticated,
     user,
     userProfile,
-    isAdmin,
-    adminData,
     loading,
     
     // User methods
@@ -337,10 +278,6 @@ export function AuthProvider({ children }) {
     updateProfile,
     changePassword,
     resetPassword,
-    
-    // Admin methods
-    adminLogin,
-    adminLogout,
   };
 
   return (

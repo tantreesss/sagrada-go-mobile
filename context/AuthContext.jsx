@@ -24,19 +24,24 @@ export function AuthProvider({ children }) {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (session?.user) {
-        await handleUserSession(session.user);
+        await handleUserSession(session.user, session);
       }
 
       // Listen for auth changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.id);
+        console.log('Auth state changed:', event, session?.user?.id, 'Session exists:', !!session);
         
         if (event === 'SIGNED_IN' && session?.user) {
-          await handleUserSession(session.user);
+          console.log('Processing SIGNED_IN event with session user');
+          await handleUserSession(session.user, session);
         } else if (event === 'SIGNED_OUT') {
+          console.log('Processing SIGNED_OUT event');
           await handleSignOut();
         } else if (event === 'USER_UPDATED' && session?.user) {
-          await handleUserSession(session.user);
+          console.log('Processing USER_UPDATED event');
+          await handleUserSession(session.user, session);
+        } else {
+          console.log('Event not handled:', event, 'Session user:', !!session?.user);
         }
       });
 
@@ -48,8 +53,15 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const handleUserSession = async (user) => {
+  const handleUserSession = async (user, session = null) => {
     try {
+      if (!user || !user.id) {
+        console.error('Invalid user object received:', user);
+        return;
+      }
+      
+      console.log('Handling user session for:', user.id, 'Access token:', user.access_token ? 'exists' : 'missing');
+      
       // Fetch user profile from user_tbl
       const { data: profile, error } = await supabase
         .from('user_tbl')
@@ -70,10 +82,20 @@ export function AuthProvider({ children }) {
         setUserProfile(profile);
       }
 
-      // Store auth data in AsyncStorage
-      await AsyncStorage.setItem('userToken', user.access_token);
-      await AsyncStorage.setItem('userData', JSON.stringify(profile || {}));
-      await AsyncStorage.setItem('isAuthenticated', 'true');
+      // Store auth data in AsyncStorage - only if values exist
+      try {
+        // Try to get access token from session first, then from user
+        const accessToken = session?.access_token || user.access_token;
+        if (accessToken) {
+          await AsyncStorage.setItem('userToken', accessToken);
+        } else {
+          console.log('No access token available, skipping token storage');
+        }
+        await AsyncStorage.setItem('userData', JSON.stringify(profile || {}));
+        await AsyncStorage.setItem('isAuthenticated', 'true');
+      } catch (storageError) {
+        console.error('Error storing data in AsyncStorage:', storageError);
+      }
 
       setUser(user);
       setIsAuthenticated(true);
@@ -109,13 +131,22 @@ export function AuthProvider({ children }) {
       if (error) throw error;
 
       if (data?.user) {
+        console.log('Sign in successful, user data:', {
+          id: data.user.id,
+          email: data.user.email,
+          hasAccessToken: !!data.user.access_token,
+          hasSession: !!data.session
+        });
+        
         // Check if email is verified
         if (!data.user.email_confirmed_at) {
           throw new Error('Please verify your email address before signing in.');
         }
 
-        await handleUserSession(data.user);
-        return { success: true, user: data.user };
+        // Use session.user if available, otherwise use data.user
+        const userToProcess = data.session?.user || data.user;
+        await handleUserSession(userToProcess, data.session);
+        return { success: true, user: userToProcess };
       }
     } catch (error) {
       console.error('Sign in error:', error);
@@ -139,6 +170,11 @@ export function AuthProvider({ children }) {
       // Password validation
       if (userData.password.length < 6) {
         throw new Error('Password must be at least 6 characters long.');
+      }
+      
+      // Check if password contains at least one uppercase, one lowercase, and one number
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]{6,}$/.test(userData.password)) {
+        throw new Error('Password must contain at least one uppercase letter, one lowercase letter, and one number.');
       }
 
       // Mobile number validation

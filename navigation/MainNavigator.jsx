@@ -10,6 +10,7 @@ import RequestScreen from '../screens/RequestScreen';
 import VirtualTourScreen from '../screens/VirtualTourScreen';
 import Ionicons from 'react-native-vector-icons/Ionicons'; 
 import CertificateRequestScreen from '../screens/CertificateRequestScreen';
+import DetailedBookingScreen from '../screens/DetailedBookingScreen';
 
 const Tab = createBottomTabNavigator();
 const BookingStack = createStackNavigator();
@@ -72,6 +73,11 @@ function BookingStackNavigator() {
         name="Request" 
         component={RequestScreen}
         options={{ title: 'Request Certificates' }}
+      />
+      <BookingStack.Screen 
+        name="DetailedBooking" 
+        component={DetailedBookingScreen}
+        options={{ title: 'Book Sacrament' }}
       />
     </BookingStack.Navigator>
   );

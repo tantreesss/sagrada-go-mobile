@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { globalStyles } from '../styles/globalStyles';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { restrictSacramentBooking, getMinimumBookingDate } from '../utils';
 
 export default function BookingScreen() {
   const { user } = useAuth();
@@ -25,8 +26,16 @@ export default function BookingScreen() {
     'Wedding',
     'Baptism',
     'Confession',
-    'Anointing of the Sick'
+    'Anointing of the Sick',
+    'Burial',
+    'Confirmation',
+    'First Communion'
   ];
+
+  const getSacramentInfo = (sacrament) => {
+    const minDate = getMinimumBookingDate(sacrament);
+    return minDate ? `Minimum booking: ${minDate}` : '';
+  };
 
   useEffect(() => {
     fetchBookings();
@@ -61,6 +70,13 @@ export default function BookingScreen() {
 
     if (!pax || isNaN(pax) || parseInt(pax) < 1) {
       setErrorMessage('Please enter a valid number of attendees.');
+      return;
+    }
+
+    // Check booking restrictions
+    const restrictionMessage = restrictSacramentBooking(selectedSacrament, date);
+    if (restrictionMessage) {
+      setErrorMessage(restrictionMessage);
       return;
     }
 
@@ -168,11 +184,19 @@ export default function BookingScreen() {
                   key={sacrament}
                   style={styles.modalOption}
                   onPress={() => {
-                    setSelectedSacrament(sacrament);
                     setShowSacramentModal(false);
+                    // Navigate to detailed booking for complex sacraments
+                    if (['Baptism', 'Burial', 'Wedding'].includes(sacrament)) {
+                      navigation.navigate('DetailedBooking', { sacrament });
+                    } else {
+                      setSelectedSacrament(sacrament);
+                    }
                   }}
                 >
-                  <Text style={styles.modalOptionText}>{sacrament}</Text>
+                  <View style={styles.sacramentOption}>
+                    <Text style={styles.modalOptionText}>{sacrament}</Text>
+                    <Text style={styles.sacramentInfo}>{getSacramentInfo(sacrament)}</Text>
+                  </View>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
@@ -363,6 +387,17 @@ const styles = StyleSheet.create({
   },
   modalOptionText: {
     fontSize: 16,
+    color: '#333',
+    fontWeight: '600',
+  },
+  sacramentOption: {
+    alignItems: 'center',
+  },
+  sacramentInfo: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+    textAlign: 'center',
   },
   modalCloseButton: {
     marginTop: 15,

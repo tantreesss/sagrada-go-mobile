@@ -131,6 +131,12 @@ export default function ProfileScreen({ navigation }) {
         Alert.alert('Error', 'New password must be at least 6 characters long.');
         return;
       }
+      
+      // Check if password contains at least one uppercase, one lowercase, and one number
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d@$!%*?&]{6,}$/.test(passwordData.newPassword)) {
+        Alert.alert('Error', 'New password must contain at least one uppercase letter, one lowercase letter, and one number.');
+        return;
+      }
 
       await changePassword(passwordData.newPassword);
 
@@ -414,16 +420,19 @@ export default function ProfileScreen({ navigation }) {
               />
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>New Password</Text>
-              <TextInput
-                style={styles.input}
-                value={passwordData.newPassword}
-                onChangeText={(text) => setPasswordData({...passwordData, newPassword: text})}
-                placeholder="Enter new password"
-                secureTextEntry
-              />
-            </View>
+                         <View style={styles.inputGroup}>
+               <Text style={styles.label}>New Password</Text>
+               <TextInput
+                 style={styles.input}
+                 value={passwordData.newPassword}
+                 onChangeText={(text) => setPasswordData({...passwordData, newPassword: text})}
+                 placeholder="Enter new password"
+                 secureTextEntry
+               />
+                               <Text style={styles.passwordHint}>
+                  Must be at least 6 characters with uppercase, lowercase, and numbers
+                </Text>
+             </View>
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Confirm New Password</Text>
@@ -756,8 +765,15 @@ const styles = StyleSheet.create({
      fontSize: 16,
      color: '#333',
    },
-   placeholderText: {
-     fontSize: 16,
-     color: '#999',
-   },
+       placeholderText: {
+      fontSize: 16,
+      color: '#999',
+    },
+    passwordHint: {
+      color: '#666',
+      fontSize: 12,
+      marginTop: 5,
+      marginBottom: 10,
+      fontStyle: 'italic',
+    },
  });

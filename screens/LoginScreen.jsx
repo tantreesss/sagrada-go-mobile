@@ -326,6 +326,9 @@ export default function LoginScreen({ navigation }) {
                   />
                 </TouchableOpacity>
               </View>
+              <Text style={styles.passwordHint}>
+                Password must be at least 6 characters with uppercase, lowercase, and numbers
+              </Text>
 
               <View style={styles.inputContainer}>
                 <Ionicons name="lock-closed" size={20} color="#666" style={styles.inputIcon} />
@@ -504,5 +507,13 @@ const styles = StyleSheet.create({
     color: '#E1D5B8',
     fontSize: 14,
     textDecorationLine: 'underline',
+  },
+  passwordHint: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: -10,
+    marginBottom: 10,
+    marginLeft: 5,
+    fontStyle: 'italic',
   },
 });

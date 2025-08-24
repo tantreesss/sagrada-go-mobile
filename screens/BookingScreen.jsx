@@ -1,32 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, Platform, FlatList, Alert, ActivityIndicator, TextInput } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Modal,
+  Platform,
+  ActivityIndicator,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { globalStyles } from '../styles/globalStyles';
-import Ionicons from 'react-native-vector-icons/Ionicons';
 import { restrictSacramentBooking, getMinimumBookingDate } from '../utils';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 export default function BookingScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
+  
+  const [bookings, setBookings] = useState([]);
   const [selectedSacrament, setSelectedSacrament] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(new Date());
   const [pax, setPax] = useState('1');
+  const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [showSacramentModal, setShowSacramentModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const navigation = useNavigation();
+  const [showSacramentModal, setShowSacramentModal] = useState(false);
+  const [showRequirementsModal, setShowRequirementsModal] = useState(false);
+  const [selectedSacramentForRequirements, setSelectedSacramentForRequirements] = useState('');
 
   const sacraments = [
-    'Wedding',
     'Baptism',
-    'Confession',
-    'Anointing of the Sick',
+    'Wedding',
     'Burial',
     'Confirmation',
     'First Communion'
@@ -35,6 +47,86 @@ export default function BookingScreen() {
   const getSacramentInfo = (sacrament) => {
     const minDate = getMinimumBookingDate(sacrament);
     return minDate ? `Minimum booking: ${minDate}` : '';
+  };
+
+  const getSacramentRequirements = (sacrament) => {
+    switch (sacrament) {
+      case 'Baptism':
+        return {
+          title: 'Baptism Requirements',
+          requirements: [
+            'Baby\'s full name, birthday, and birthplace',
+            'Mother\'s full name and birthplace',
+            'Father\'s full name and birthplace',
+            'Type of marriage (Catholic, Civil, Natural, or Not Married)',
+            'Contact number and current address',
+            'Main godfather (name, age, address)',
+            'Main godmother (name, age, address)',
+            'Additional godparents (optional, up to 10)',
+            'Booking must be made at least 1.5 months in advance'
+          ]
+        };
+      case 'Wedding':
+        return {
+          title: 'Wedding Requirements',
+          requirements: [
+            'Groom\'s full name',
+            'Bride\'s full name',
+            '1x1 photos of both groom and bride',
+            'Baptismal certificates of both groom and bride',
+            'Confirmation certificates of both groom and bride',
+            'Marriage License (if not civilly married)',
+            'Marriage Contract (for civil married only)',
+            'CENOMAR (Certificate of No Marriage) for both groom and bride',
+            'Contact number',
+            'Booking must be made at least 1 month in advance'
+          ]
+        };
+      case 'Burial':
+        return {
+          title: 'Burial Requirements',
+          requirements: [
+            'Deceased person\'s full name and age',
+            'Name of person requesting the service',
+            'Relationship to the deceased',
+            'Address of the deceased',
+            'Place where mass will be held',
+            'Address of the mass location',
+            'Contact number and current address',
+            'Booking must be made at least 3 days in advance'
+          ]
+        };
+      case 'Confirmation':
+        return {
+          title: 'Confirmation Requirements',
+          requirements: [
+            'Baptismal certificate',
+            'Confirmation sponsor information',
+            'Contact number and current address',
+            'Booking must be made at least 2 months in advance'
+          ]
+        };
+      case 'First Communion':
+        return {
+          title: 'First Communion Requirements',
+          requirements: [
+            'Baptismal certificate',
+            'First Communion sponsor information',
+            'Contact number and current address',
+            'Booking must be made at least 2 months in advance'
+          ]
+        };
+      default:
+        return {
+          title: 'Requirements',
+          requirements: ['Please contact the parish office for specific requirements.']
+        };
+    }
+  };
+
+  const showRequirements = (sacrament) => {
+    setSelectedSacramentForRequirements(sacrament);
+    setShowRequirementsModal(true);
   };
 
   useEffect(() => {
@@ -180,30 +272,76 @@ export default function BookingScreen() {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Select a Sacrament</Text>
               {sacraments.map((sacrament) => (
-                <TouchableOpacity
-                  key={sacrament}
-                  style={styles.modalOption}
-                  onPress={() => {
-                    setShowSacramentModal(false);
-                    // Navigate to detailed booking for complex sacraments
-                    if (['Baptism', 'Burial', 'Wedding'].includes(sacrament)) {
-                      navigation.navigate('DetailedBooking', { sacrament });
-                    } else {
-                      setSelectedSacrament(sacrament);
-                    }
-                  }}
-                >
-                  <View style={styles.sacramentOption}>
-                    <Text style={styles.modalOptionText}>{sacrament}</Text>
-                    <Text style={styles.sacramentInfo}>{getSacramentInfo(sacrament)}</Text>
-                  </View>
-                </TouchableOpacity>
+                <View key={sacrament} style={styles.sacramentOptionContainer}>
+                  <TouchableOpacity
+                    style={styles.modalOption}
+                    onPress={() => {
+                      setShowSacramentModal(false);
+                      // Navigate to detailed booking for complex sacraments
+                      if (['Baptism', 'Burial', 'Wedding'].includes(sacrament)) {
+                        navigation.navigate('DetailedBooking', { sacrament });
+                      } else {
+                        setSelectedSacrament(sacrament);
+                      }
+                    }}
+                  >
+                    <View style={styles.sacramentOption}>
+                      <Text style={styles.modalOptionText}>{sacrament}</Text>
+                      <Text style={styles.sacramentInfo}>{getSacramentInfo(sacrament)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.requirementsButton}
+                    onPress={() => showRequirements(sacrament)}
+                  >
+                    <Text style={styles.requirementsButtonText}>Requirements</Text>
+                  </TouchableOpacity>
+                </View>
               ))}
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setShowSacramentModal(false)}
               >
                 <Text style={styles.modalCloseButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Requirements Modal */}
+        <Modal
+          visible={showRequirementsModal}
+          transparent={true}
+          animationType="slide"
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {getSacramentRequirements(selectedSacramentForRequirements)?.title}
+                </Text>
+                <TouchableOpacity
+                  style={styles.closeButton}
+                  onPress={() => setShowRequirementsModal(false)}
+                >
+                  <Ionicons name="close" size={24} color="#666" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={styles.requirementsContent}>
+                {getSacramentRequirements(selectedSacramentForRequirements)?.requirements.map((requirement, index) => (
+                  <View key={index} style={styles.requirementItem}>
+                    <Ionicons name="checkmark-circle" size={20} color="#4CAF50" style={styles.checkIcon} />
+                    <Text style={styles.requirementText}>{requirement}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowRequirementsModal(false)}
+              >
+                <Text style={styles.modalCloseButtonText}>Close</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -217,9 +355,17 @@ export default function BookingScreen() {
         {/* Date and Time Selection */}
         {selectedSacrament ? (
           <View style={styles.selectionContainer}>
-            <Text style={styles.subtitle}>
-              Selected Sacrament: {selectedSacrament}
-            </Text>
+            <View style={styles.selectionHeader}>
+              <Text style={styles.subtitle}>
+                Selected Sacrament: {selectedSacrament}
+              </Text>
+              <TouchableOpacity
+                style={styles.requirementsButton}
+                onPress={() => showRequirements(selectedSacrament)}
+              >
+                <Text style={styles.requirementsButtonText}>View Requirements</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Date Selection */}
             <TouchableOpacity 
@@ -384,6 +530,7 @@ const styles = StyleSheet.create({
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+    flex: 1,
   },
   modalOptionText: {
     fontSize: 16,
@@ -416,6 +563,12 @@ const styles = StyleSheet.create({
   },
   selectionContainer: {
     marginTop: 20,
+  },
+  selectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
   },
   subtitle: {
     fontSize: 18,
@@ -526,5 +679,53 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     borderRadius: 5,
     padding: 5,
+  },
+  sacramentOptionContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+
+  requirementsButton: {
+    backgroundColor: '#6B5F32',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  requirementsButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  closeButton: {
+    padding: 5,
+  },
+  requirementsContent: {
+    maxHeight: 300,
+    marginBottom: 15,
+  },
+  requirementItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingHorizontal: 5,
+  },
+  checkIcon: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  requirementText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    lineHeight: 20,
   },
 });

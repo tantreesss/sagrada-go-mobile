@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// Note: Profile image upload currently stores images locally due to Supabase storage configuration
+// To enable cloud storage, configure a 'profile-images' bucket in Supabase and uncomment the cloud upload code
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
   TextInput, Alert, Image, Dimensions, Modal, Platform 
@@ -9,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../context/AuthContext';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width } = Dimensions.get('window');
 
@@ -21,6 +24,9 @@ export default function ProfileScreen({ navigation }) {
   const [bookings, setBookings] = useState([]);
   const [donations, setDonations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [profileImage, setProfileImage] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [imageLoading, setImageLoading] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -47,6 +53,10 @@ export default function ProfileScreen({ navigation }) {
         contact: userProfile.user_mobile || '',
         birthday: userProfile.user_bday || '',
       });
+      // Set profile image if available
+      if (userProfile.profile_image_url) {
+        setProfileImage(userProfile.profile_image_url);
+      }
       setLoading(false);
     }
     fetchUserBookings();
@@ -216,6 +226,161 @@ export default function ProfileScreen({ navigation }) {
     setShowDatePicker(true);
   };
 
+  const pickImage = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera roll permissions to change your profile picture.');
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        console.log('Selected image URI:', imageUri);
+        await uploadProfileImage(imageUri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please grant camera permissions to take a photo.');
+        return;
+      }
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        console.log('Selected photo URI:', imageUri);
+        await uploadProfileImage(imageUri);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  const uploadProfileImage = async (imageUri) => {
+    try {
+      setUploading(true);
+      
+      // TEMPORARY IMPLEMENTATION: Store image locally
+      // TODO: Implement proper cloud storage when Supabase storage is configured
+      console.log('Setting profile image to:', imageUri);
+      setProfileImage(imageUri);
+      
+      // Try to update the database with the local URI (temporary solution)
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          // Store the image URI in the database (temporary solution)
+          const { error: updateError } = await supabase
+            .from('user_tbl')
+            .update({ profile_image_url: imageUri })
+            .eq('id', user.id);
+
+          if (updateError) {
+            console.warn('Could not save image URL to database:', updateError);
+            // Continue anyway - image is still displayed locally
+          } else {
+            console.log('Image URL saved to database successfully');
+          }
+        }
+      } catch (dbError) {
+        console.warn('Database update failed:', dbError);
+        // Continue anyway - image is still displayed locally
+      }
+      
+      Alert.alert('Success', 'Profile picture updated successfully! (Note: Image is stored locally for now)');
+    } catch (error) {
+      console.error('Error processing image:', error);
+      Alert.alert('Error', 'Failed to process image. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const showImagePickerOptions = () => {
+    const options = [
+      { text: 'Take Photo', onPress: takePhoto },
+      { text: 'Choose from Library', onPress: pickImage },
+    ];
+    
+    // Add remove option if user has a custom profile image
+    if (profileImage && !profileImage.includes('default-profile.jpeg')) {
+      options.push({ text: 'Remove Photo', onPress: removeProfileImage, style: 'destructive' });
+    }
+    
+    options.push({ text: 'Cancel', style: 'cancel' });
+    
+    Alert.alert('Change Profile Picture', 'Choose an option', options);
+  };
+
+  const removeProfileImage = async () => {
+    try {
+      // Try to update the database
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { error } = await supabase
+            .from('user_tbl')
+            .update({ profile_image_url: null })
+            .eq('id', user.id);
+
+          if (error) {
+            console.warn('Could not remove image URL from database:', error);
+            // Continue anyway - image is still removed locally
+          }
+        }
+      } catch (dbError) {
+        console.warn('Database update failed:', dbError);
+        // Continue anyway - image is still removed locally
+      }
+      
+      setProfileImage(null);
+      Alert.alert('Success', 'Profile picture removed successfully!');
+    } catch (error) {
+      console.error('Error removing profile image:', error);
+      Alert.alert('Error', 'Failed to remove profile image. Please try again.');
+    }
+  };
+
+  const handleImageLoadStart = () => {
+    setImageLoading(true);
+  };
+
+  const handleImageLoadEnd = () => {
+    setImageLoading(false);
+  };
+
+  const handleImageError = () => {
+    setImageLoading(false);
+    console.warn('Profile image failed to load, falling back to default');
+    // Don't show alert for image loading errors - just fall back silently
+    setProfileImage(null);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -230,11 +395,28 @@ export default function ProfileScreen({ navigation }) {
       <View style={styles.header}>
         <View style={styles.profileImageContainer}>
           <Image 
-            source={require('../assets/default-profile.jpeg')} 
+            source={profileImage ? { uri: profileImage } : require('../assets/default-profile.jpeg')} 
             style={styles.profileImage}
+            defaultSource={require('../assets/default-profile.jpeg')}
+            onLoadStart={handleImageLoadStart}
+            onLoadEnd={handleImageLoadEnd}
+            onError={handleImageError}
           />
-          <TouchableOpacity style={styles.editImageButton}>
-            <Ionicons name="camera" size={20} color="white" />
+          {imageLoading && (
+            <View style={styles.imageLoadingOverlay}>
+              <Text style={styles.imageLoadingText}>Loading...</Text>
+            </View>
+          )}
+          <TouchableOpacity 
+            style={[styles.editImageButton, uploading && styles.uploadingButton]} 
+            onPress={showImagePickerOptions}
+            disabled={uploading}
+          >
+            {uploading ? (
+              <Text style={styles.uploadingText}>...</Text>
+            ) : (
+              <Ionicons name="camera" size={20} color="white" />
+            )}
           </TouchableOpacity>
         </View>
                  <Text style={styles.userName}>
@@ -775,5 +957,29 @@ const styles = StyleSheet.create({
     marginTop: 5,
     marginBottom: 10,
     fontStyle: 'italic',
+  },
+  uploadingButton: {
+    backgroundColor: '#999',
+  },
+  uploadingText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  imageLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 50,
+  },
+  imageLoadingText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

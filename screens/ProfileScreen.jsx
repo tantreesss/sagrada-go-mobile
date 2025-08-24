@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  TextInput, Alert, Image, Dimensions, Modal 
+  TextInput, Alert, Image, Dimensions, Modal, Platform 
 } from 'react-native';
 import { globalStyles } from '../styles/globalStyles';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -757,23 +757,23 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '600',
   },
-     logoutButtonText: {
-     color: 'white',
-     fontWeight: '600',
-   },
-   dateText: {
-     fontSize: 16,
-     color: '#333',
-   },
-       placeholderText: {
-      fontSize: 16,
-      color: '#999',
-    },
-    passwordHint: {
-      color: '#666',
-      fontSize: 12,
-      marginTop: 5,
-      marginBottom: 10,
-      fontStyle: 'italic',
-    },
- });
+  logoutButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  placeholderText: {
+    fontSize: 16,
+    color: '#999',
+  },
+  passwordHint: {
+    color: '#666',
+    fontSize: 12,
+    marginTop: 5,
+    marginBottom: 10,
+    fontStyle: 'italic',
+  },
+});

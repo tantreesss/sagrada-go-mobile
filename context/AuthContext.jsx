@@ -1,6 +1,7 @@
 // context/AuthContext.js
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Create authentication context
 const AuthContext = createContext();
@@ -9,46 +10,341 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminData, setAdminData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Initialize authentication state
   useEffect(() => {
-    // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
+    initializeAuth();
   }, []);
+
+  const initializeAuth = async () => {
+    try {
+      // Check for existing session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        await handleUserSession(session.user);
+      }
+
+      // Listen for auth changes
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
+        
+        if (event === 'SIGNED_IN' && session?.user) {
+          await handleUserSession(session.user);
+        } else if (event === 'SIGNED_OUT') {
+          await handleSignOut();
+        } else if (event === 'USER_UPDATED' && session?.user) {
+          await handleUserSession(session.user);
+        }
+      });
+
+      setLoading(false);
+      return () => subscription?.unsubscribe();
+    } catch (error) {
+      console.error('Error initializing auth:', error);
+      setLoading(false);
+    }
+  };
+
+  const handleUserSession = async (user) => {
+    try {
+      // Fetch user profile from user_tbl
+      const { data: profile, error } = await supabase
+        .from('user_tbl')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        // If profile doesn't exist, create a basic one
+        setUserProfile({
+          id: user.id,
+          user_email: user.email,
+          user_firstname: user.user_metadata?.user_firstname || '',
+          user_lastname: user.user_metadata?.user_lastname || '',
+        });
+      } else {
+        setUserProfile(profile);
+      }
+
+      // Check if user is admin
+      const isUserAdmin = profile?.is_admin || false;
+      setIsAdmin(isUserAdmin);
+
+      // Store auth data in AsyncStorage
+      await AsyncStorage.setItem('userToken', user.access_token);
+      await AsyncStorage.setItem('userData', JSON.stringify(profile || {}));
+      await AsyncStorage.setItem('isAuthenticated', 'true');
+
+      setUser(user);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('Error handling user session:', error);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      // Clear AsyncStorage
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userData');
+      await AsyncStorage.removeItem('isAuthenticated');
+      await AsyncStorage.removeItem('adminData');
+
+      // Clear state
+      setUser(null);
+      setUserProfile(null);
+      setIsAuthenticated(false);
+      setIsAdmin(false);
+      setAdminData(null);
+    } catch (error) {
+      console.error('Error during sign out:', error);
+    }
+  };
+
+  // User authentication methods
+  const signIn = async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data?.user) {
+        // Check if email is verified
+        if (!data.user.email_confirmed_at) {
+          throw new Error('Please verify your email address before signing in.');
+        }
+
+        await handleUserSession(data.user);
+        return { success: true, user: data.user };
+      }
+    } catch (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+  };
+
+  const signUp = async (userData) => {
+    try {
+      // Validate required fields
+      if (!userData.user_firstname || !userData.user_lastname || !userData.user_mobile || 
+          !userData.user_bday || !userData.user_email || !userData.password) {
+        throw new Error('Please fill in all required fields.');
+      }
+
+      // Email validation
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.user_email)) {
+        throw new Error('Please enter a valid email address.');
+      }
+
+      // Password validation
+      if (userData.password.length < 6) {
+        throw new Error('Password must be at least 6 characters long.');
+      }
+
+      // Mobile number validation
+      if (!/^\d+$/.test(userData.user_mobile)) {
+        throw new Error('Mobile number must contain only numbers.');
+      }
+      if (!userData.user_mobile.startsWith('09') || userData.user_mobile.length !== 11) {
+        throw new Error('Mobile number must be 11 digits long and start with 09.');
+      }
+
+      // Age validation
+      const today = new Date();
+      const birthDate = new Date(userData.user_bday);
+      const age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      const dayDiff = today.getDate() - birthDate.getDate();
+
+      if (age < 18 || (age === 18 && monthDiff < 0) || (age === 18 && monthDiff === 0 && dayDiff < 0)) {
+        throw new Error('You must be at least 18 years old to register.');
+      }
+
+      // Sign up with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: userData.user_email,
+        password: userData.password,
+        options: {
+          data: {
+            user_firstname: userData.user_firstname,
+            user_lastname: userData.user_lastname,
+          }
+        }
+      });
+
+      if (authError) throw authError;
+
+      if (authData?.user) {
+        // Store additional user data in the user_tbl
+        const { error: profileError } = await supabase
+          .from('user_tbl')
+          .insert([{
+            id: authData.user.id,
+            user_firstname: userData.user_firstname,
+            user_middle: userData.user_middle || '',
+            user_lastname: userData.user_lastname,
+            user_gender: userData.user_gender || 'rather not to tell',
+            user_status: userData.user_status || '-',
+            user_mobile: userData.user_mobile,
+            user_bday: userData.user_bday.toISOString().split('T')[0],
+            user_email: userData.user_email,
+            is_admin: false,
+            is_volunteer: false,
+          }]);
+
+        if (profileError) throw profileError;
+
+        return { 
+          success: true, 
+          user: authData.user,
+          message: 'Account created successfully! Please check your email to verify your account.'
+        };
+      }
+    } catch (error) {
+      console.error('Sign up error:', error);
+      throw error;
+    }
+  };
 
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
-      setIsAuthenticated(false);
-      setUser(null);
+      await handleSignOut();
     } catch (error) {
       console.error('Error signing out:', error);
+      throw error;
     }
   };
 
+  const updateProfile = async (profileData) => {
+    try {
+      if (!user?.id) throw new Error('User not authenticated');
+
+      const { error } = await supabase
+        .from('user_tbl')
+        .update(profileData)
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setUserProfile(prev => ({ ...prev, ...profileData }));
+      await AsyncStorage.setItem('userData', JSON.stringify({ ...userProfile, ...profileData }));
+
+      return { success: true };
+    } catch (error) {
+      console.error('Update profile error:', error);
+      throw error;
+    }
+  };
+
+  const changePassword = async (newPassword) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Change password error:', error);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email) => {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'sagradago://reset-password',
+      });
+
+      if (error) throw error;
+      return { success: true, message: 'Password reset email sent!' };
+    } catch (error) {
+      console.error('Reset password error:', error);
+      throw error;
+    }
+  };
+
+  // Admin authentication methods
+  const adminLogin = async (email, password) => {
+    try {
+      // Check if user exists and is admin
+      const { data: userData, error: userError } = await supabase
+        .from('user_tbl')
+        .select('*')
+        .eq('user_email', email)
+        .eq('is_admin', true)
+        .single();
+
+      if (userError || !userData) {
+        throw new Error('Invalid admin credentials.');
+      }
+
+      // Sign in with Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data?.user) {
+        setAdminData(userData);
+        setIsAdmin(true);
+        await AsyncStorage.setItem('adminData', JSON.stringify(userData));
+        return { success: true, adminData: userData };
+      }
+    } catch (error) {
+      console.error('Admin login error:', error);
+      throw error;
+    }
+  };
+
+  const adminLogout = async () => {
+    try {
+      setAdminData(null);
+      setIsAdmin(false);
+      await AsyncStorage.removeItem('adminData');
+    } catch (error) {
+      console.error('Admin logout error:', error);
+      throw error;
+    }
+  };
+
+  const value = {
+    // State
+    isAuthenticated,
+    user,
+    userProfile,
+    isAdmin,
+    adminData,
+    loading,
+    
+    // User methods
+    signIn,
+    signUp,
+    signOut,
+    updateProfile,
+    changePassword,
+    resetPassword,
+    
+    // Admin methods
+    adminLogin,
+    adminLogout,
+  };
+
   return (
-    <AuthContext.Provider value={{ 
-      isAuthenticated, 
-      setIsAuthenticated, 
-      user, 
-      loading,
-      signOut 
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

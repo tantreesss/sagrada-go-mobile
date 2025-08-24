@@ -1,35 +1,75 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ImageBackground, TouchableOpacity, 
-  ScrollView, TextInput, Alert, Linking 
+  ScrollView, TextInput, Alert, Linking, Modal, Dimensions 
 } from 'react-native';
 import { globalStyles } from '../styles/globalStyles';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ChatBot from '../components/ChatBot';
 import { supabase } from '../lib/supabase';
+import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+const { width, height } = Dimensions.get('window');
 
 const upcomingEvents = [
-  { id: '1', title: 'Sunday Mass', date: '2025-02-23' },
-  { id: '2', title: 'Youth Gathering', date: '2025-02-25' },
+  { 
+    id: '1', 
+    title: 'Diocesan Youth Day', 
+    date: '2025-02-23',
+    description: 'A church event for the Youth of the Diocese.',
+    image: require('../assets/dyd.jpg')
+  },
+  { 
+    id: '2', 
+    title: 'Sagrada Familia Parish Feast Day', 
+    date: '2025-03-23',
+    description: 'A church event for Feast Day.',
+    image: require('../assets/pista.jpg')
+  },
+  { 
+    id: '3', 
+    title: 'Sacerdotal Anniversary', 
+    date: '2025-11-29',
+    description: 'A church event for Sacerdotal Anniversary of the Parish Priest.',
+    image: require('../assets/sarcedotal.jpg')
+  },
+];
+
+const sacraments = [
+  { label: 'Wedding', value: 'Wedding', price: 5000 },
+  { label: 'Baptism', value: 'Baptism', price: 2000 },
+  { label: 'Confession', value: 'Confession', price: 0 },
+  { label: 'Anointing of the Sick', value: 'Anointing of the Sick', price: 0 },
+  { label: 'First Communion', value: 'First Communion', price: 1500 },
+  { label: 'Burial', value: 'Burial', price: 3000 },
 ];
 
 export default function HomeScreen({ navigation }) {
   const [username, setUsername] = useState('User');
   const [nextEvent, setNextEvent] = useState(null);
   const [showDonate, setShowDonate] = useState(false);
+  const [showBooking, setShowBooking] = useState(false);
+  const [showVolunteer, setShowVolunteer] = useState(false);
   const [donationAmount, setDonationAmount] = useState('');
+  const [donationIntercession, setDonationIntercession] = useState('');
+  const [selectedSacrament, setSelectedSacrament] = useState('');
+  const [bookingDate, setBookingDate] = useState(new Date());
+  const [bookingTime, setBookingTime] = useState(new Date());
+  const [bookingPax, setBookingPax] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [isVolunteer, setIsVolunteer] = useState(false);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-
           const { data: userData, error } = await supabase
             .from('user_tbl')
-            .select('user_firstname')
+            .select('user_firstname, is_volunteer')
             .eq('id', user.id)
             .single();
 
@@ -38,8 +78,9 @@ export default function HomeScreen({ navigation }) {
             return;
           }
 
-          if (userData && userData.user_firstname) {
-            setUsername(userData.user_firstname);
+          if (userData) {
+            setUsername(userData.user_firstname || 'User');
+            setIsVolunteer(userData.is_volunteer || false);
           }
         }
       } catch (error) {
@@ -54,312 +95,613 @@ export default function HomeScreen({ navigation }) {
     }
   }, []);
 
-  const handleDonate = () => {
+  const handleDonate = async () => {
     if (!donationAmount || isNaN(donationAmount) || Number(donationAmount) <= 0) {
       Alert.alert('Invalid Amount', 'Please enter a valid donation amount.');
       return;
     }
-  
-    Alert.alert(
-      'Confirm Donation',
-      `Are you sure you want to donate ₱${donationAmount}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Yes',
-          onPress: async () => {
-            try {
-              const storedUser = await AsyncStorage.getItem('currentUser');
-              if (storedUser) {
-                const user = JSON.parse(storedUser);
-                const totalDonation = (user.totalDonation || 0) + Number(donationAmount);
-  
-                // Update user data with new donation amount
-                const updatedUser = { ...user, totalDonation };
-                await AsyncStorage.setItem('currentUser', JSON.stringify(updatedUser));
-  
-                Alert.alert('Thank You!', `You have donated ₱${donationAmount} to the church.`);
-                setDonationAmount('');
-                setShowDonate(false);
-              }
-            } catch (error) {
-              console.error('Error updating donation:', error);
-              Alert.alert('Error', 'Failed to process donation.');
-            }
-          },
-        },
-      ],
-      { cancelable: false }
-    );
-  };    
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'User not authenticated.');
+        return;
+      }
+
+      const transactionId = `DON-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      
+      const { error } = await supabase
+        .from('donation_tbl')
+        .insert([{
+          user_id: user.id,
+          donation_amount: Number(donationAmount),
+          donation_intercession: donationIntercession || null,
+          donation_transaction: transactionId,
+          donation_status: 'completed',
+          date_created: new Date().toISOString()
+        }]);
+
+      if (error) throw error;
+
+      Alert.alert('Thank You!', `You have donated ₱${donationAmount} to the church.`);
+      setDonationAmount('');
+      setDonationIntercession('');
+      setShowDonate(false);
+    } catch (error) {
+      console.error('Error processing donation:', error);
+      Alert.alert('Error', 'Failed to process donation.');
+    }
+  };
+
+  const handleBooking = async () => {
+    if (!selectedSacrament || !bookingPax || bookingPax <= 0) {
+      Alert.alert('Invalid Booking', 'Please fill in all required fields.');
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'User not authenticated.');
+        return;
+      }
+
+      const transactionId = `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      const selectedSacramentData = sacraments.find(s => s.value === selectedSacrament);
+      
+      const { error } = await supabase
+        .from('booking_tbl')
+        .insert([{
+          user_id: user.id,
+          booking_sacrament: selectedSacrament,
+          booking_date: bookingDate.toISOString().split('T')[0],
+          booking_time: bookingTime.toLocaleTimeString('en-US', { hour12: false }),
+          booking_pax: parseInt(bookingPax),
+          booking_status: 'pending',
+          booking_transaction: transactionId,
+          price: selectedSacramentData?.price || 0,
+        }]);
+
+      if (error) throw error;
+
+      Alert.alert(
+        'Booking Confirmed', 
+        `Your ${selectedSacrament} booking has been submitted for approval.`
+      );
+      setSelectedSacrament('');
+      setBookingPax('');
+      setShowBooking(false);
+    } catch (error) {
+      console.error('Error creating booking:', error);
+      Alert.alert('Error', 'Failed to create booking.');
+    }
+  };
 
   const handleVolunteer = async () => {
-    Alert.alert(
-      'Volunteer Confirmation',
-      'Are you sure you want to become a volunteer?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes',
-          onPress: async () => {
-            const uniqueID = `VOL-${Math.floor(100000 + Math.random() * 900000)}`;
-            await AsyncStorage.setItem('volunteerID', uniqueID);
-            Alert.alert('Success', 'You are now a registered volunteer!');
-            navigation.navigate('Profile');
-          },
-        },
-      ],
-      { cancelable: false }
-    );
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('Error', 'User not authenticated.');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('user_tbl')
+        .update({ is_volunteer: true })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setIsVolunteer(true);
+      Alert.alert('Success', 'You are now registered as a volunteer!');
+      setShowVolunteer(false);
+    } catch (error) {
+      console.error('Error updating volunteer status:', error);
+      Alert.alert('Error', 'Failed to register as volunteer.');
+    }
   };
 
-  const openLink = (url) => {
-    Linking.openURL(url).catch((err) => console.error('Error opening link:', err));
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   };
-  
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
 
   return (
-    <ImageBackground
-      source={{ uri: 'https://source.unsplash.com/featured/?church,prayer' }}
-      style={styles.background}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.welcomeText}>Welcome, {username}!</Text>
-        <Text style={styles.subtitle}>Manage your parish activities, events, and more.</Text>
-
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Bookings')}>
-            <Ionicons name="book-outline" size={24} color="white" />
-            <Text style={styles.buttonText}>Book a Sacrament</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Events')}>
-            <Ionicons name="calendar-outline" size={24} color="white" />
-            <Text style={styles.buttonText}>View Events</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Virtual Tour')}>
-            <Ionicons name="map-outline" size={24} color="white" />
-            <Text style={styles.buttonText}>Virtual Tour</Text>
-          </TouchableOpacity>
+    <ScrollView style={styles.container}>
+      <ImageBackground 
+        source={require('../assets/sagrada.jpg')} 
+        style={styles.header}
+        imageStyle={styles.headerImage}
+      >
+        <View style={styles.headerContent}>
+          <Text style={styles.welcomeText}>Welcome back, {username}!</Text>
+          <Text style={styles.subtitle}>Sagrada Familia Parish</Text>
         </View>
+      </ImageBackground>
 
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.donateButton} onPress={() => setShowDonate(true)}>
-            <Ionicons name="heart-outline" size={24} color="white" />
-            <Text style={styles.buttonText}>Donate</Text>
-          </TouchableOpacity>
+      {/* Quick Actions */}
+      <View style={styles.quickActions}>
+        <TouchableOpacity 
+          style={styles.actionCard} 
+          onPress={() => setShowBooking(true)}
+        >
+          <Ionicons name="calendar" size={24} color="#E1D5B8" />
+          <Text style={styles.actionText}>Book Sacrament</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionCard} 
+          onPress={() => setShowDonate(true)}
+        >
+          <Ionicons name="heart" size={24} color="#E1D5B8" />
+          <Text style={styles.actionText}>Donate</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionCard} 
+          onPress={() => navigation.navigate('Events')}
+        >
+          <Ionicons name="calendar-outline" size={24} color="#E1D5B8" />
+          <Text style={styles.actionText}>Events</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionCard} 
+          onPress={() => navigation.navigate('BookingList')}
+        >
+          <Ionicons name="list" size={24} color="#E1D5B8" />
+          <Text style={styles.actionText}>My Bookings</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity 
+          style={styles.actionCard} 
+          onPress={() => navigation.navigate('VirtualTour')}
+        >
+          <Ionicons name="eye" size={24} color="#E1D5B8" />
+          <Text style={styles.actionText}>Virtual Tour</Text>
+        </TouchableOpacity>
+      </View>
 
-          <TouchableOpacity style={styles.volunteerButton} onPress={handleVolunteer}>
-            <Ionicons name="people-outline" size={24} color="white" />
-            <Text style={styles.buttonText}>Be a Volunteer</Text>
-          </TouchableOpacity>
+      {/* Next Event */}
+      {nextEvent && (
+        <View style={styles.eventCard}>
+          <Text style={styles.sectionTitle}>Next Event</Text>
+          <View style={styles.eventContent}>
+            <Text style={styles.eventTitle}>{nextEvent.title}</Text>
+            <Text style={styles.eventDate}>{nextEvent.date}</Text>
+            <Text style={styles.eventDescription}>{nextEvent.description}</Text>
+          </View>
         </View>
+      )}
 
-        {showDonate && (
-          <View style={styles.donationForm}>
-            <Text style={styles.eventTitle}>🙏 Make a Donation</Text>
+      {/* Volunteer Status */}
+      <View style={styles.volunteerCard}>
+        <Text style={styles.sectionTitle}>Volunteer Status</Text>
+        {isVolunteer ? (
+          <View style={styles.volunteerActive}>
+            <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
+            <Text style={styles.volunteerText}>You are an active volunteer</Text>
+          </View>
+        ) : (
+          <TouchableOpacity 
+            style={styles.volunteerButton}
+            onPress={() => setShowVolunteer(true)}
+          >
+            <Ionicons name="people" size={20} color="white" />
+            <Text style={styles.volunteerButtonText}>Become a Volunteer</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* ChatBot */}
+      <ChatBot />
+
+      {/* Donation Modal */}
+      <Modal
+        visible={showDonate}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDonate(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Make a Donation</Text>
+            <Text style={styles.modalSubtitle}>
+              Support our parish by making a donation. Your generosity helps us continue our mission.
+            </Text>
+            
             <TextInput
               style={styles.input}
-              placeholder="Enter amount (₱)"
-              keyboardType="numeric"
+              placeholder="Enter Amount"
               value={donationAmount}
               onChangeText={setDonationAmount}
+              keyboardType="numeric"
             />
-            <TouchableOpacity style={styles.confirmButton} onPress={handleDonate}>
-              <Text style={styles.buttonText}>Confirm Donation</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Donation Intercession (Optional)"
+              value={donationIntercession}
+              onChangeText={setDonationIntercession}
+              multiline
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setShowDonate(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.confirmButton]}
+                onPress={handleDonate}
+              >
+                <Text style={styles.confirmButtonText}>Confirm Donation</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Booking Modal */}
+      <Modal
+        visible={showBooking}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowBooking(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <ScrollView style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Book a Sacrament</Text>
+            <Text style={styles.modalSubtitle}>
+              Reserve a date and time for your chosen sacrament below.
+            </Text>
+            
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedSacrament}
+                onValueChange={setSelectedSacrament}
+                style={styles.picker}
+              >
+                <Picker.Item label="Select Sacrament" value="" />
+                {sacraments.map((sacrament) => (
+                  <Picker.Item 
+                    key={sacrament.value} 
+                    label={`${sacrament.label} - ₱${sacrament.price.toLocaleString()}`} 
+                    value={sacrament.value} 
+                  />
+                ))}
+              </Picker>
+            </View>
+            
+            <TouchableOpacity 
+              style={styles.dateButton}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Ionicons name="calendar" size={20} color="#666" />
+              <Text style={styles.dateButtonText}>
+                {formatDate(bookingDate)}
+              </Text>
             </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.dateButton}
+              onPress={() => setShowTimePicker(true)}
+            >
+              <Ionicons name="time" size={20} color="#666" />
+              <Text style={styles.dateButtonText}>
+                {formatTime(bookingTime)}
+              </Text>
+            </TouchableOpacity>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Number of People"
+              value={bookingPax}
+              onChangeText={setBookingPax}
+              keyboardType="numeric"
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setShowBooking(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.confirmButton]}
+                onPress={handleBooking}
+              >
+                <Text style={styles.confirmButtonText}>Confirm Booking</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Volunteer Modal */}
+      <Modal
+        visible={showVolunteer}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowVolunteer(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Become a Volunteer</Text>
+            <Text style={styles.modalSubtitle}>
+              Join our community of volunteers and help serve our parish. Volunteers assist with various church activities and events.
+            </Text>
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.button, styles.cancelButton]}
+                onPress={() => setShowVolunteer(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.button, styles.confirmButton]}
+                onPress={handleVolunteer}
+              >
+                <Text style={styles.confirmButtonText}>Join as Volunteer</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
+        </View>
+      </Modal>
 
-        {nextEvent && (
-          <View style={styles.eventCard}>
-            <Text style={styles.eventTitle}>📅 Next Event</Text>
-            <Text style={styles.eventName}>{nextEvent.title}</Text>
-            <Text style={styles.eventDate}>{nextEvent.date}</Text>
-          </View>
-        )}
-
-<View style={styles.extraButtons}>
-  <TouchableOpacity 
-    style={styles.infoButton} 
-    onPress={() => openLink('https://yourchurchwebsite.com/contact')}
-  >
-    <Ionicons name="call-outline" size={24} color="white" />
-    <Text style={styles.buttonText}>Contact Us</Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity 
-    style={styles.infoButton} 
-    onPress={() => openLink('https://yourchurchwebsite.com/faq')}
-  >
-    <Ionicons name="help-circle-outline" size={24} color="white" />
-    <Text style={styles.buttonText}>FAQs</Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity 
-    style={styles.facebookButton} 
-    onPress={() => openLink('https://www.facebook.com/sfpsanctuaryoftheholyfaceofmanoppello')}
-  >
-    <Ionicons name="logo-facebook" size={24} color="white" />
-    <Text style={styles.buttonText}>Facebook</Text>
-  </TouchableOpacity>
-</View>
-
-      </ScrollView>
-      <ChatBot />
-    </ImageBackground>
+      {/* Date/Time Pickers */}
+      {showDatePicker && (
+        <DateTimePicker
+          value={bookingDate}
+          mode="date"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowDatePicker(false);
+            if (selectedDate) setBookingDate(selectedDate);
+          }}
+          minimumDate={new Date()}
+        />
+      )}
+      
+      {showTimePicker && (
+        <DateTimePicker
+          value={bookingTime}
+          mode="time"
+          display="default"
+          onChange={(event, selectedDate) => {
+            setShowTimePicker(false);
+            if (selectedDate) setBookingTime(selectedDate);
+          }}
+        />
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-    resizeMode: 'cover',
-    justifyContent: 'center',
-  },
   container: {
-    flexGrow: 1,
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  header: {
+    height: 200,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 50,
-    backgroundColor: '#E1D5B8',
+  },
+  headerImage: {
+    borderRadius: 0,
+  },
+  headerContent: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
   },
   welcomeText: {
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#738054',
-    marginBottom: 10,
+    color: 'white',
+    marginBottom: 5,
   },
   subtitle: {
     fontSize: 16,
-    color: '0000000',
-    marginBottom: 20,
-    textAlign: 'center',
-    paddingHorizontal: 20,
+    color: '#E1D5B8',
   },
-  buttonContainer: {
+  quickActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginVertical: 10,
+    padding: 20,
+    justifyContent: 'space-between',
   },
-  button: {
-    backgroundColor: '#007bff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    margin: 10,
-    width: 180,
-    justifyContent: 'center',
-    elevation: 3,
-  },
-  donateButton: {
-    backgroundColor: '#28a745',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    margin: 10,
-    width: 180,
-    justifyContent: 'center',
-    elevation: 3,
-  },
-  volunteerButton: {
-    backgroundColor: '#ff9900',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    margin: 10,
-    width: 180,
-    justifyContent: 'center',
-    elevation: 3,
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  donationForm: {
+  actionCard: {
+    width: (width - 60) / 2,
     backgroundColor: 'white',
-    padding: 15,
+    padding: 20,
     borderRadius: 10,
     alignItems: 'center',
-    width: '80%',
-    marginTop: 20,
+    marginBottom: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 4,
+    elevation: 3,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: 'gray',
-    borderRadius: 8,
-    padding: 10,
-    width: '80%',
-    marginVertical: 10,
-  },
-  confirmButton: {
-    backgroundColor: '#007bff',
-    padding: 10,
-    borderRadius: 8,
-    width: '60%',
-    alignItems: 'center',
+  actionText: {
+    marginTop: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
   },
   eventCard: {
     backgroundColor: 'white',
-    padding: 15,
+    margin: 20,
+    padding: 20,
     borderRadius: 10,
-    alignItems: 'center',
-    width: '80%',
-    marginTop: 20,
-    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  eventTitle: {
+  sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#007bff',
+    color: '#6B5F32',
+    marginBottom: 15,
   },
-  eventName: {
+  eventContent: {
+    alignItems: 'center',
+  },
+  eventTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 5,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 5,
   },
   eventDate: {
     fontSize: 14,
-    color: 'gray',
-    marginTop: 5,
+    color: '#666',
+    marginBottom: 10,
   },
-  extraButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginVertical: 20,
+  eventDescription: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
   },
-  infoButton: {
-    backgroundColor: '#007bff',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    margin: 10,
-    width: 180,
-    justifyContent: 'center',
+  volunteerCard: {
+    backgroundColor: 'white',
+    margin: 20,
+    padding: 20,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 3,
   },
-  facebookButton: {
-    backgroundColor: '#1877F2',
+  volunteerActive: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    margin: 10,
-    width: 180,
     justifyContent: 'center',
-    elevation: 3,
-  },  
+  },
+  volunteerText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  volunteerButton: {
+    backgroundColor: '#E1D5B8',
+    padding: 15,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  volunteerButtonText: {
+    color: 'white',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 20,
+    width: width - 40,
+    maxHeight: height * 0.8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#6B5F32',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  picker: {
+    height: 50,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+  },
+  dateButtonText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  button: {
+    flex: 1,
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  cancelButton: {
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  confirmButton: {
+    backgroundColor: '#E1D5B8',
+  },
+  cancelButtonText: {
+    color: '#666',
+    fontWeight: '600',
+  },
+  confirmButtonText: {
+    color: 'white',
+    fontWeight: '600',
+  },
 });

@@ -13,18 +13,39 @@ import CertificateRequestScreen from '../screens/CertificateRequestScreen';
 
 const Tab = createBottomTabNavigator();
 const BookingStack = createStackNavigator();
+const HomeStack = createStackNavigator();
 
 // Define the color scheme
 const colors = {
-  primary: '#738054', // Dark Olive Green
-  secondary: '#A3A86D', // Olive
-  background: '#E1D5B8', // Light Beige
-  card: '#D6C7A7', // Beige
+  primary: '#E1D5B8', // Light Beige
+  secondary: '#6B5F32', // Dark Brown
+  background: '#f5f5f5', // Light Gray
+  card: '#ffffff', // White
   accent: '#BE996E', // Tan
   button: '#AA722A', // Brown
-  activeTint: '#AA722A', // Active tab icon color
-  inactiveTint: '#738054', // Inactive tab icon color
+  activeTint: '#6B5F32', // Active tab icon color
+  inactiveTint: '#999999', // Inactive tab icon color
 };
+
+// Stack navigator for Home
+function HomeStackNavigator() {
+  return (
+    <HomeStack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <HomeStack.Screen name="HomeMain" component={HomeScreen} />
+      <HomeStack.Screen 
+        name="BookingList" 
+        component={BookingListScreen}
+        options={{ 
+          headerShown: false,
+        }}
+      />
+    </HomeStack.Navigator>
+  );
+}
 
 // Stack navigator for Bookings
 function BookingStackNavigator() {
@@ -32,8 +53,9 @@ function BookingStackNavigator() {
     <BookingStack.Navigator
       screenOptions={{
         headerStyle: { backgroundColor: colors.primary },
-        headerTitleStyle: { color: '#fff' },
-        headerTintColor: '#fff',
+        headerTitleStyle: { color: colors.secondary, fontWeight: 'bold' },
+        headerTintColor: colors.secondary,
+        headerShadowVisible: false,
       }}
     >
       <BookingStack.Screen 
@@ -68,31 +90,56 @@ export default function MainNavigator() {
             iconName = focused ? 'calendar' : 'calendar-outline';
           } else if (route.name === 'Bookings') {
             iconName = focused ? 'book' : 'book-outline';
-          } else if (route.name === 'Virtual Tour') {
-            iconName = focused ? 'document' : 'document-outline';
+          } else if (route.name === 'VirtualTour') {
+            iconName = focused ? 'eye' : 'eye-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
-          } else if (route.name === 'Request') {
-            iconName = focused ? 'document-text' : 'document-text-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
         tabBarActiveTintColor: colors.activeTint,
         tabBarInactiveTintColor: colors.inactiveTint,
-        tabBarStyle: { backgroundColor: colors.card }, // Tab bar background
+        tabBarStyle: { 
+          backgroundColor: colors.card,
+          borderTopWidth: 1,
+          borderTopColor: '#eee',
+          paddingBottom: 5,
+          paddingTop: 5,
+          height: 60,
+        },
         headerShown: false, // Hide header for bottom tabs
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Events" component={EventsScreen} />
+      <Tab.Screen 
+        name="Home" 
+        component={HomeStackNavigator}
+        options={{ title: 'Home' }}
+      />
+      <Tab.Screen 
+        name="Events" 
+        component={EventsScreen}
+        options={{ title: 'Events' }}
+      />
       <Tab.Screen 
         name="Bookings" 
         component={BookingStackNavigator}
-        options={{ title: 'Bookings & Requests' }}
+        options={{ title: 'Bookings' }}
       /> 
-      <Tab.Screen name="Request" component={CertificateRequestScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen 
+        name="VirtualTour" 
+        component={VirtualTourScreen}
+        options={{ title: 'Virtual Tour' }}
+      />
+      <Tab.Screen 
+        name="Profile" 
+        component={ProfileScreen}
+        options={{ title: 'Profile' }}
+      />
     </Tab.Navigator>
   );
 }

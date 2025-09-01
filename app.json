@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/sagrada.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -27,7 +27,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "404eff2e-5c44-460f-9cd8-136986b610bc"
+        "projectId": "f340b45f-ca93-4e42-8e2d-ae9e2e79352f"
       }
     },
     "owner": "tantreesss",

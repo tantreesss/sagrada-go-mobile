@@ -45,30 +45,33 @@ const ChatBot = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyBVv_qj1r6k_R75F45DeE0Thr5K7Jq5Y3A',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: inputText,
-                  },
-                ],
-              },
-            ],
-          }),
-        }
-      );
+      // Use local server instead of calling Gemini API directly
+      const response = await fetch('http://localhost:5001/api/gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: inputText,
+          history: messages.map(msg => ({
+            role: msg.sender === 'user' ? 'user' : 'assistant',
+            content: msg.text
+          }))
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
       const botMessage = {
-        text: data.candidates[0].content.parts[0].text,
+        text: data.response || 'I apologize, but I received an empty response. Please try again.',
         sender: 'bot',
         timestamp: new Date().toISOString(),
       };

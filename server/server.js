@@ -19,9 +19,9 @@ console.log('- Supabase URL:', process.env.REACT_APP_SUPABASE_URL ? 'Configured'
 console.log('- Supabase Service Role Key:', process.env.REACT_SUPABASE_SERVICE_ROLE_KEY ? 'Configured' : 'Not configured');
 
 // ===== Middleware Setup =====
-// Allow requests from frontend
+// Allow requests from frontend and mobile app
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173'],
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081', 'http://localhost:19006'],
   methods: ['GET', 'POST'],
   credentials: true
 }));
@@ -75,6 +75,8 @@ app.post('/api/gemini', async (req, res) => {
   try {
     const { message, history } = req.body;
     
+    console.log('Received request:', { message, history });
+    
     // Validate input
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
@@ -99,7 +101,7 @@ app.post('/api/gemini', async (req, res) => {
       },
       ...(history ? history.map(msg => ({
         role: msg.role,
-        parts: [{ text: msg.parts[0].text }]
+        parts: [{ text: msg.content || msg.text || '' }]
       })) : []),
       {
         role: 'user',
@@ -124,7 +126,7 @@ app.post('/api/gemini', async (req, res) => {
       reply = candidates[0].content.parts[0].text;
     }
 
-    res.json({ reply });
+    res.json({ response: reply });
   } catch (error) {
     console.error('Error in /api/gemini:', error.response?.data || error);
     

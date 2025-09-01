@@ -1,0 +1,24 @@
+{
+  "name": "sagrada-go-server",
+  "version": "1.0.0",
+  "description": "Backend server for SagradaGo chatbot and admin functions",
+  "main": "server.js",
+  "scripts": {
+    "start": "node start.js",
+    "dev": "nodemon server.js",
+    "server": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.0",
+    "@supabase/supabase-js": "^2.39.7",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": ["chatbot", "sagrada-go", "express", "supabase"],
+  "author": "SagradaGo Team",
+  "license": "MIT"
+}

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,31 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import Markdown from 'react-native-markdown-display';
 
 const ChatBot = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([
+    {
+      role: 'model',
+      parts: [{ text: `# Welcome to SagradaGo Parish Information System!\n\nI can help you with:\n\n- • Mass schedules and events\n- • Parish activities and programs\n- • Sacramental services\n- • Donations and offerings\n- • General parish information\n\nHow may I assist you today?` }]
+    }
+  ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef();
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollViewRef.current) {
+      scrollViewRef.current.scrollToEnd({ animated: true });
+    }
+  }, [messages, isLoading]);
 
   const toggleChat = () => {
     const toValue = isOpen ? 0 : 1;
@@ -34,59 +49,75 @@ const ChatBot = () => {
   const sendMessage = async () => {
     if (!inputText.trim()) return;
 
-    const userMessage = {
-      text: inputText,
-      sender: 'user',
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputText('');
-    setIsLoading(true);
-
     try {
-      // Use local server instead of calling Gemini API directly
-      const response = await fetch('http://localhost:5001/api/gemini', {
+      setIsLoading(true);
+      setError(null);
+      console.log('[Chatbot Debug] Sending message', inputText);
+
+      // Add user message to chat
+      const userMessage = {
+        role: 'user',
+        parts: [{ text: inputText }]
+      };
+      setMessages(prev => [...prev, userMessage]);
+      setInputText(''); // Clear input after sending
+
+      // Build conversation history
+      const history = messages.map(msg => ({
+        role: msg.role,
+        parts: [{ text: msg.parts[0].text }]
+      }));
+
+      // Check server health first
+      try {
+        const healthCheck = await fetch('http://192.168.1.12:5001/api/health');
+        if (!healthCheck.ok) {
+          throw new Error('Server is not healthy. Please try again later.');
+        }
+      } catch (error) {
+        console.error('[Chatbot Debug] Health check failed:', error);
+        throw new Error('Cannot connect to the server. Please make sure the server is running.');
+      }
+
+      // Make API request
+      const response = await fetch('http://192.168.1.12:5001/api/gemini', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: inputText,
-          history: messages.map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant',
-            content: msg.text
-          }))
-        }),
+        body: JSON.stringify({ message: inputText, history }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        console.error('[Chatbot Debug] Server error:', errorData);
+        throw new Error(errorData.error || 'Failed to process message');
       }
 
       const data = await response.json();
-      
-      if (data.error) {
-        throw new Error(data.error);
-      }
 
-      const botMessage = {
-        text: data.response || 'I apologize, but I received an empty response. Please try again.',
-        sender: 'bot',
-        timestamp: new Date().toISOString(),
+      // Add AI response to chat
+      const aiMessage = {
+        role: 'model',
+        parts: [{ text: data.response || data.reply || 'I apologize, but I received an empty response. Please try again.' }]
       };
-
-      setMessages(prev => [...prev, botMessage]);
+      setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
-      console.error('Error:', error);
-      setMessages(prev => [
-        ...prev,
-        {
-          text: 'Sorry, I encountered an error. Please try again.',
-          sender: 'bot',
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      console.error('[Chatbot Debug] Error occurred', error);
+      let errorMessage = error.message;
+      
+      if (error.message === 'Failed to fetch') {
+        errorMessage = 'Cannot connect to the server. Please make sure the server is running at http://localhost:5001';
+      }
+      
+      setError(errorMessage);
+      
+      // Add error message to chat
+      const errorResponse = {
+        role: 'model',
+        parts: [{ text: `Error: ${errorMessage}` }]
+      };
+      setMessages(prev => [...prev, errorResponse]);
     } finally {
       setIsLoading(false);
     }
@@ -110,9 +141,9 @@ const ChatBot = () => {
         ]}
       >
         <View style={styles.chatHeader}>
-          <Text style={styles.headerText}>Church Assistant</Text>
+          <Text style={styles.headerText}>Parish Assistant</Text>
           <TouchableOpacity onPress={toggleChat} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#333" />
+            <Ionicons name="close" size={24} color="#6B5F32" />
           </TouchableOpacity>
         </View>
 
@@ -126,15 +157,25 @@ const ChatBot = () => {
               key={index}
               style={[
                 styles.messageBubble,
-                message.sender === 'user' ? styles.userMessage : styles.botMessage,
+                message.role === 'user' ? styles.userMessage : styles.botMessage,
               ]}
             >
-              <Text style={styles.messageText}>{message.text}</Text>
+              <Markdown style={styles.markdown}>
+                {message.parts[0].text}
+              </Markdown>
             </View>
           ))}
           {isLoading && (
             <View style={[styles.messageBubble, styles.botMessage]}>
-              <Text style={styles.messageText}>Typing...</Text>
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#007bff" />
+                <Text style={styles.loadingText}>Assistant is typing...</Text>
+              </View>
+            </View>
+          )}
+          {error && (
+            <View style={[styles.messageBubble, styles.errorMessage]}>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
           )}
         </ScrollView>
@@ -158,7 +199,8 @@ const ChatBot = () => {
 
       {!isOpen && (
         <TouchableOpacity style={styles.chatButton} onPress={toggleChat}>
-          <Ionicons name="chatbubble-ellipses" size={24} color="#fff" />
+          <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+          <Text style={styles.chatButtonText}>Ask AI Parish Assistant</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -173,18 +215,24 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   chatButton: {
-    backgroundColor: '#007bff',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
+    backgroundColor: '#E1D5B8',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 25,
     margin: 16,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    gap: 8,
+  },
+  chatButtonText: {
+    color: '#6B5F32',
+    fontSize: 14,
+    fontWeight: '600',
   },
   chatContainer: {
     position: 'absolute',
@@ -206,13 +254,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    backgroundColor: '#E1D5B8',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   headerText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '600',
+    color: '#6B5F32',
   },
   closeButton: {
     padding: 4,
@@ -220,6 +269,7 @@ const styles = StyleSheet.create({
   messagesContainer: {
     flex: 1,
     padding: 16,
+    backgroundColor: '#f7f7f7',
   },
   messageBubble: {
     maxWidth: '80%',
@@ -228,16 +278,62 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   userMessage: {
-    backgroundColor: '#007bff',
+    backgroundColor: '#E1D5B8',
     alignSelf: 'flex-end',
   },
   botMessage: {
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#e3e3e3',
     alignSelf: 'flex-start',
   },
   messageText: {
     color: '#333',
     fontSize: 16,
+  },
+  markdown: {
+    body: {
+      color: '#333',
+      fontSize: 16,
+    },
+    heading1: {
+      fontSize: 20,
+      fontWeight: 'bold',
+      marginBottom: 8,
+    },
+    heading2: {
+      fontSize: 18,
+      fontWeight: 'bold',
+      marginBottom: 6,
+    },
+    paragraph: {
+      marginBottom: 8,
+    },
+    list_item: {
+      marginBottom: 4,
+    },
+    strong: {
+      fontWeight: 'bold',
+    },
+    em: {
+      fontStyle: 'italic',
+    },
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  errorMessage: {
+    backgroundColor: '#ffebee',
+    borderColor: '#f44336',
+    borderWidth: 1,
+  },
+  errorText: {
+    color: '#d32f2f',
+    fontSize: 14,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -248,7 +344,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#f7f7f7',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -256,7 +352,7 @@ const styles = StyleSheet.create({
     maxHeight: 100,
   },
   sendButton: {
-    backgroundColor: '#007bff',
+    backgroundColor: '#E1D5B8',
     width: 40,
     height: 40,
     borderRadius: 20,

@@ -1,242 +1,96 @@
-// Load environment variables from .env file
-require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const axios = require('axios');
-const { createClient } = require('@supabase/supabase-js');
+const cors = require('cors');
+const dotenv = require('dotenv');
+dotenv.config();
 
-// ===== Server Configuration =====
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+console.log('Gemini API Key at startup:', GEMINI_API_KEY);
+
 const app = express();
-const port = process.env.PORT || 5001;
-const supabase = createClient(process.env.REACT_APP_SUPABASE_URL, process.env.REACT_SUPABASE_SERVICE_ROLE_KEY);
-
-// Log server configuration
-console.log('Environment check:');
-console.log('- PORT:', process.env.PORT || 5001);
-console.log('- NODE_ENV:', process.env.NODE_ENV || 'development');
-console.log('- API Key configured:', !!process.env.GEMINI_API_KEY);
-console.log('- Supabase URL:', process.env.REACT_APP_SUPABASE_URL ? 'Configured' : 'Not configured');
-console.log('- Supabase Service Role Key:', process.env.REACT_SUPABASE_SERVICE_ROLE_KEY ? 'Configured' : 'Not configured');
-
-// ===== Middleware Setup =====
-// Allow requests from frontend and mobile app
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8081', 'http://localhost:19006'],
-  methods: ['GET', 'POST'],
-  credentials: true
-}));
-
-// Parse JSON request bodies
+app.use(cors());
 app.use(express.json());
 
-// Log all incoming requests
-app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  if (req.method === 'POST') {
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-  }
-  next();
+// Health check endpoint
+app.get('/api/test', (req, res) => {
+  res.json({ status: 'Backend is running' });
 });
 
-// ===== Helper Functions =====
-/**
- * Tests if the Gemini API is working by sending a simple "Hello" message
- * @returns {Promise<boolean>} True if the API test was successful
- */
-async function testGeminiAPI() {
-  try {
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
-      {
-        contents: [{
-          parts: [{ text: "Hello" }]
-        }]
-      },
-      {
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
-    
-    console.log('Gemini API test successful. Response:', response.data);
-    return true;
-  } catch (error) {
-    console.error('Gemini API test failed:', error.response?.data || error.message);
-    return false;
-  }
-}
+// Health check endpoint for the chatbot
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    apiKeyConfigured: !!process.env.GEMINI_API_KEY,
+    apiTestSuccessful: true,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
 
-// ===== API Endpoints =====
-/**
- * Chat endpoint that handles messages and returns AI responses
- * POST /api/gemini
- * Body: { message: string, history: Array }
- */
+// Gemini chat endpoint
 app.post('/api/gemini', async (req, res) => {
+  const userMessage = req.body.message;
+  const history = req.body.history || [];
+  
+  console.log('Received request:', { userMessage, history });
+  
   try {
-    const { message, history } = req.body;
+    const contents = history.length > 0
+      ? history.concat([{ role: 'user', parts: [{ text: userMessage }] }])
+      : [{ parts: [{ text: userMessage }] }];
+      
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
     
-    console.log('Received request:', { message, history });
+    // Debug: print the outgoing request
+    console.log('Sending to Gemini:', JSON.stringify({ contents }, null, 2));
+    console.log('Using API Key:', GEMINI_API_KEY);
     
-    // Validate input
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-
-    const systemPrompt = `You are a helpful virtual assistant for Sagrada Familia Parish Church, located at Sagrada Familia Parish, Sanctuary of the Holy Face of Manoppello, Manila, Philippines.
-      You are an expert in both church-related matters in the Philippines and the SagradaGo Parish Information System. In SagradaGo, users can:
-      • Book sacrament services — Wedding, Baptism, Confession, Anointing of the Sick, First Communion, and Burial — via the "Book a Service" feature.
-      • View upcoming church events on the "Events" page.
-      • Volunteer for church activities.
-      • Donate to support the church.
-      Only respond to questions related to the church or the SagradaGo system.
-      If the user asks about anything unrelated (e.g., random topics, general knowledge, or other locations), politely reply that you can only assist with Sagrada Familia Parish and its services.
-    `;
-
-
-    // Format conversation history for Gemini API
-    const contents = [
-      { 
-        role: 'user',
-        parts: [{ text: systemPrompt }]
-      },
-      ...(history ? history.map(msg => ({
-        role: msg.role,
-        parts: [{ text: msg.content || msg.text || '' }]
-      })) : []),
-      {
-        role: 'user',
-        parts: [{ text: message }]
-      }
-    ];
-
-    // Send request to Gemini API
-    const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+    const geminiResponse = await axios.post(
+      geminiUrl,
       { contents },
       {
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000
       }
     );
-
-    // Extract response text from Gemini API response
-    const candidates = response.data.candidates;
-    let reply = 'Sorry, no response from Gemini.';
     
-    if (candidates?.[0]?.content?.parts?.[0]?.text) {
-      reply = candidates[0].content.parts[0].text;
+    // Debug: print the response
+    console.log('Gemini API response:', JSON.stringify(geminiResponse.data, null, 2));
+    
+    const candidates = geminiResponse.data.candidates;
+    let geminiReply = 'Sorry, no response from Gemini.';
+    
+    if (candidates && candidates[0] && candidates[0].content && candidates[0].content.parts && candidates[0].content.parts[0].text) {
+      geminiReply = candidates[0].content.parts[0].text;
     }
-
-    res.json({ response: reply });
-  } catch (error) {
-    console.error('Error in /api/gemini:', error.response?.data || error);
     
-    // Handle API errors
-    if (error.response?.data?.error?.message) {
-      return res.status(error.response.status).json({
-        error: error.response.data.error.message,
-        details: error.response.data
+    res.json({ 
+      response: geminiReply,
+      reply: geminiReply 
+    });
+  } catch (err) {
+    if (err.response) {
+      console.error('Gemini API error:', JSON.stringify(err.response.data, null, 2));
+      res.status(500).json({ 
+        response: err.response.data.error?.message || 'Sorry, Gemini is unavailable.',
+        reply: err.response.data.error?.message || 'Sorry, Gemini is unavailable.'
+      });
+    } else {
+      console.error('Gemini API error:', err.message, err.stack);
+      res.status(500).json({ 
+        response: 'Sorry, Gemini is unavailable.',
+        reply: 'Sorry, Gemini is unavailable.'
       });
     }
-    
-    res.status(500).json({
-      error: 'Failed to process message',
-      details: error.message
-    });
   }
 });
 
-/**
- * Health check endpoint to verify server and API status
- * GET /api/health
- */
-app.get('/api/health', async (req, res) => {
-  try {
-    const apiTest = await testGeminiAPI();
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      apiKeyConfigured: !!process.env.GEMINI_API_KEY,
-      apiTestSuccessful: apiTest,
-      environment: process.env.NODE_ENV || 'development'
-    });
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(500).json({
-      status: 'error',
-      error: error.message,
-      apiKeyConfigured: !!process.env.GEMINI_API_KEY,
-      apiTestSuccessful: false,
-      details: error.response?.data || error.stack
-    });
-  }
-});
-
-app.post('/admin/createUser', async (req, res) => {
-  try {
-    const { email, randomPassword } = req.body;
-    if (!email || !randomPassword) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Email and random password are required',
-        user: null,
-        details: 'Missing email or random password in request body'
-      });
-    }
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `http://localhost:3000/set-password`,
-      // redirectTo: `${window.location.origin}/set-password`,
-    });
-
-    if (error) {
-      console.error('Error from Supabase:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: error,
-        details: error,
-        user: null
-      });
-    }
-
-    res.json({
-      status: 'success',
-      message: 'User has been invited to join SagradaGo. They are sent an invite link to set their password before accessing the system.',
-      details: 'User has been invited to join SagradaGo',
-      user: data.user
-    });
-
-    // Create a new user in the SagradaGo system
-
-  } catch (error) {
-    console.error('Error creating user:', error);
-    res.status(500).json({ 
-      status: 'error',
-      message: error.message || 'Failed to create user',
-      details: error.response?.data || error.stack ,
-      user: null
-    });
-  }
-});
-
-// ===== Server Startup =====
-const server = app.listen(port, async () => {
+const PORT = process.env.PORT || 5001;
+app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`Server started successfully!`);
-  console.log(`Server running on port ${port}`);
-  console.log(`Health check: http://localhost:${port}/api/health`);
-  
-  // Test API on startup
-  const apiTest = await testGeminiAPI();
-  if (!apiTest) {
-    console.error('⚠️ Warning: Gemini API test failed. The chatbot may not work properly.');
-    console.error('Please check your API key and try again.');
-  } else {
-    console.log('✅ Gemini API test successful');
-  }
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Test endpoint: http://localhost:${PORT}/api/test`);
   console.log('='.repeat(50));
 });
-
-// Handle server errors
-server.on('error', (error) => {
-  console.error('Server error:', error);
-  process.exit(1);
-}); 

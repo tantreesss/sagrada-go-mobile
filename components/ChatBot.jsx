@@ -22,11 +22,31 @@ const ChatBot = () => {
       parts: [{ text: `# Welcome to SagradaGo Parish Information System!\n\nI can help you with:\n\n- • Mass schedules and events\n- • Parish activities and programs\n- • Sacramental services\n- • Donations and offerings\n- • General parish information\n\nHow may I assist you today?` }]
     }
   ]);
+
+  // Function to clear error messages from chat history
+  const clearErrorMessages = () => {
+    setMessages(prev => prev.filter(msg => 
+      !msg.parts[0].text.includes('Error:') && 
+      !msg.parts[0].text.includes('Cannot connect')
+    ));
+  };
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef();
+
+  // Server configuration - can be easily changed for different environments
+  const SERVER_CONFIG = {
+    // Try multiple possible server addresses
+    addresses: [
+      'http://192.168.1.12:5001',  // Your current network IP
+      'http://localhost:5001',      // Local development
+      'http://10.0.2.2:5001',      // Android emulator
+      'http://127.0.0.1:5001',     // Localhost alternative
+    ],
+    timeout: 5000, // 5 second timeout
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -34,6 +54,31 @@ const ChatBot = () => {
       scrollViewRef.current.scrollToEnd({ animated: true });
     }
   }, [messages, isLoading]);
+
+  // Function to find a working server address
+  const findWorkingServer = async () => {
+    for (const address of SERVER_CONFIG.addresses) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), SERVER_CONFIG.timeout);
+        
+        const response = await fetch(`${address}/api/health`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          console.log(`[Chatbot Debug] Found working server at: ${address}`);
+          return address;
+        }
+      } catch (error) {
+        console.log(`[Chatbot Debug] Server ${address} not available:`, error.message);
+      }
+    }
+    throw new Error('No working server found');
+  };
 
   const toggleChat = () => {
     const toValue = isOpen ? 0 : 1;
@@ -68,19 +113,16 @@ const ChatBot = () => {
         parts: [{ text: msg.parts[0].text }]
       }));
 
-      // Check server health first
-      try {
-        const healthCheck = await fetch('http://192.168.1.12:5001/api/health');
-        if (!healthCheck.ok) {
-          throw new Error('Server is not healthy. Please try again later.');
-        }
-      } catch (error) {
-        console.error('[Chatbot Debug] Health check failed:', error);
-        throw new Error('Cannot connect to the server. Please make sure the server is running.');
-      }
+      // Find working server address
+      const serverAddress = await findWorkingServer();
+      console.log(`[Chatbot Debug] Using server: ${serverAddress}`);
+      
+      // Clear any previous errors since we found a working server
+      setError(null);
+      clearErrorMessages();
 
       // Make API request
-      const response = await fetch('http://192.168.1.12:5001/api/gemini', {
+      const response = await fetch(`${serverAddress}/api/gemini`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,8 +148,8 @@ const ChatBot = () => {
       console.error('[Chatbot Debug] Error occurred', error);
       let errorMessage = error.message;
       
-      if (error.message === 'Failed to fetch') {
-        errorMessage = 'Cannot connect to the server. Please make sure the server is running at http://localhost:5001';
+      if (error.message === 'Failed to fetch' || error.message === 'No working server found') {
+        errorMessage = 'Cannot connect to any server. Please make sure the server is running and accessible from your network.';
       }
       
       setError(errorMessage);
@@ -142,9 +184,14 @@ const ChatBot = () => {
       >
         <View style={styles.chatHeader}>
           <Text style={styles.headerText}>Parish Assistant</Text>
-          <TouchableOpacity onPress={toggleChat} style={styles.closeButton}>
-            <Ionicons name="close" size={24} color="#6B5F32" />
-          </TouchableOpacity>
+          <View style={styles.headerButtons}>
+            <TouchableOpacity onPress={clearErrorMessages} style={styles.clearButton}>
+              <Ionicons name="refresh" size={20} color="#6B5F32" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={toggleChat} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#6B5F32" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -262,6 +309,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#6B5F32',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  clearButton: {
+    padding: 4,
   },
   closeButton: {
     padding: 4,

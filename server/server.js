@@ -8,12 +8,32 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 console.log('Gemini API Key at startup:', GEMINI_API_KEY);
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: '*', // Allow all origins
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: false // Set to false when using wildcard origin
+}));
 app.use(express.json());
 
 // Health check endpoint
 app.get('/api/test', (req, res) => {
   res.json({ status: 'Backend is running' });
+});
+
+// Server info endpoint
+app.get('/api/info', (req, res) => {
+  res.json({
+    status: 'Server is running',
+    accessibleFrom: 'All IP addresses',
+    endpoints: {
+      health: '/api/health',
+      test: '/api/test',
+      chat: '/api/gemini',
+      info: '/api/info'
+    },
+    cors: 'Enabled for all origins',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Health check endpoint for the chatbot
@@ -86,11 +106,23 @@ app.post('/api/gemini', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
-  console.log('='.repeat(50));
-  console.log(`Server started successfully!`);
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
-  console.log(`Test endpoint: http://localhost:${PORT}/api/test`);
-  console.log('='.repeat(50));
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('='.repeat(60));
+  console.log(`🚀 SagradaGo Server started successfully!`);
+  console.log(`📡 Server running on port ${PORT}`);
+  console.log('='.repeat(60));
+  console.log('🌐 ACCESS POINTS:');
+  console.log(`   Local:     http://localhost:${PORT}`);
+  console.log(`   Network:   http://192.168.1.12:${PORT}`);
+  console.log(`   Public:    http://0.0.0.0:${PORT}`);
+  console.log('='.repeat(60));
+  console.log('📋 ENDPOINTS:');
+  console.log(`   Health:    http://192.168.1.12:${PORT}/api/health`);
+  console.log(`   Test:      http://192.168.1.12:${PORT}/api/test`);
+  console.log(`   Info:      http://192.168.1.12:${PORT}/api/info`);
+  console.log(`   Chat:      http://192.168.1.12:${PORT}/api/gemini`);
+  console.log('='.repeat(60));
+  console.log('✅ CORS: Enabled for all origins (*)');
+  console.log('✅ Accessible from any IP address');
+  console.log('='.repeat(60));
 });

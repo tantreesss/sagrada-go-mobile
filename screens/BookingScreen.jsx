@@ -38,11 +38,13 @@ export default function BookingScreen() {
   const [selectedSacramentForRequirements, setSelectedSacramentForRequirements] = useState('');
 
   const sacraments = [
-    'Baptism',
     'Wedding',
+    'Baptism',
+    'Confession',
+    'Anointing of the Sick',
+    'First Communion',
     'Burial',
     'Confirmation',
-    'First Communion'
   ];
 
   const getSacramentInfo = (sacrament) => {
@@ -115,6 +117,25 @@ export default function BookingScreen() {
             'First Communion sponsor information',
             'Contact number and current address',
             'Booking must be made at least 2 months in advance'
+          ]
+        };
+      case 'Confession':
+        return {
+          title: 'Confession Requirements',
+          requirements: [
+            'Full name',
+            'Contact number and current address',
+            'Booking must be made at least 2 days in advance'
+          ]
+        };
+      case 'Anointing of the Sick':
+        return {
+          title: 'Anointing of the Sick Requirements',
+          requirements: [
+            'Full name of the sick person and age',
+            'Location/address where anointing will be held',
+            'Contact number and current address',
+            'Booking must be made at least 1 day in advance'
           ]
         };
       default:

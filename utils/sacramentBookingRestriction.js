@@ -6,14 +6,16 @@ const restrictSacramentBooking = (selectedSacrament, date) => {
         return 'Confession bookings must be at least 2 days in advance.';
     } else if (selectedSacrament === 'Wedding' && date < new Date(Date.now() + 1 * 30 * 24 * 60 * 60 * 1000)) {
         return 'Wedding bookings must be at least 1 month in advance.';
-    } else if (selectedSacrament === 'Burial' && date < new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)) {
-        return 'Burial bookings must be at least 3 days in advance.';
+    } else if (selectedSacrament === 'Burial' && date < new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)) {
+        return 'Burial bookings must be at least 1 day in advance.';
     } else if (selectedSacrament === 'Baptism' && date < new Date(Date.now() + 1.5 * 30 * 24 * 60 * 60 * 1000)) {
         return 'Baptism bookings must be at least 1 and a half month in advance.';
     } else if (selectedSacrament === 'Confirmation' && date < new Date(Date.now() + 2 * 30 * 24 * 60 * 60 * 1000)) {
         return 'Confirmation bookings must be at least 2 months in advance.';
     } else if (selectedSacrament === 'First Communion' && date < new Date(Date.now() + 2 * 30 * 24 * 60 * 60 * 1000)) { 
         return 'First Communion bookings must be at least 2 months in advance.';
+    } else if (selectedSacrament === 'Anointing of the Sick' && date < new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)) {
+        return 'Anointing of the Sick bookings must be at least 1 day in advance.';
     }
     return '';
 }
